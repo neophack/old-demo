@@ -15,7 +15,7 @@ import { observer } from "mobx-react-lite";
 import { NextPage } from "next";
 import Head from "next/head";
 import { KeyboardEvent, useEffect, useState } from "react";
-import { DemoModePanel, DeviceView, ExternalLink } from "../components";
+import { LabelerPanel, DemoModePanel, DeviceView, ExternalLink } from "../components";
 import {
     NavigationBar,
     SETTING_DEFINITIONS,
@@ -255,7 +255,27 @@ const Scrcpy: NextPage = () => {
                                 <VideoContainer />
                             </DeviceView>
                         </div>
-
+                        <div
+                            style={{
+                                padding: 4,
+                                overflow: "hidden auto",
+                                display: STATE.labelerVisible ? "block" : "none",
+                                width: 700,
+                                fontFamily: "monospace",
+                                overflowY: "auto",
+                                whiteSpace: "pre-wrap",
+                                wordWrap: "break-word",
+                            }}
+                        >
+                           
+                           <LabelerPanel
+                            style={{
+                                display: STATE.labelerVisible
+                                    ? "block"
+                                    : "none",
+                            }}
+                            />
+                        </div>
                         <div
                             style={{
                                 padding: 12,
@@ -272,7 +292,7 @@ const Scrcpy: NextPage = () => {
                                 <div key={index}>{line}</div>
                             ))}
                         </div>
-
+                    
                         <DemoModePanel
                             style={{
                                 display: STATE.demoModeVisible

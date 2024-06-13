@@ -1,5 +1,8 @@
 import { makeStyles } from "@griffel/react";
 import {
+    AndroidKeyCode,
+    AndroidKeyEventAction,
+    AndroidKeyEventMeta,
     AndroidMotionEventAction,
     AndroidMotionEventButton,
     ScrcpyPointerId,
@@ -18,19 +21,27 @@ function handleWheel(e: WheelEvent) {
     if (!STATE.client) {
         return;
     }
-
+    console.log("handleWheel");
     STATE.fullScreenContainer!.focus();
     e.preventDefault();
     e.stopPropagation();
 
     const { x, y } = STATE.clientPositionToDevicePosition(e.clientX, e.clientY);
+    const action = {
+        type: "wheel",
+        x,
+        y,
+        scrollX: -e.deltaX / 100,
+        scrollY: -e.deltaY / 100,
+    };
+    STATE.recordedActions.push(action);
     STATE.client!.controlMessageWriter!.injectScroll({
         screenWidth: STATE.client!.screenWidth!,
         screenHeight: STATE.client!.screenHeight!,
         pointerX: x,
         pointerY: y,
-        scrollX: -e.deltaX / 100,
-        scrollY: -e.deltaY / 100,
+        scrollX: action.scrollX,
+        scrollY: action.scrollY,
         buttons: 0,
     });
 }
@@ -75,6 +86,7 @@ function injectTouch(
         // `MouseEvent.buttons` has the same order as Android `MotionEvent`
         buttons: e.buttons,
     });
+
     for (const message of messages) {
         STATE.client.controlMessageWriter!.injectTouch(message);
     }
@@ -84,12 +96,23 @@ function handlePointerDown(e: PointerEvent<HTMLDivElement>) {
     if (!STATE.client) {
         return;
     }
-
+    console.log("handlePointerDown");
     STATE.fullScreenContainer!.focus();
     e.preventDefault();
     e.stopPropagation();
 
     e.currentTarget.setPointerCapture(e.pointerId);
+    const action = {
+        type: "pointerdown",
+        clientX: e.clientX,
+        clientY: e.clientY,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType,
+        pressure: e.pressure,
+        buttons: e.buttons,
+        button: e.button,
+    };
+    STATE.recordedActions.push(action);
     injectTouch(AndroidMotionEventAction.Down, e);
 }
 
@@ -97,9 +120,20 @@ function handlePointerMove(e: PointerEvent<HTMLDivElement>) {
     if (!STATE.client) {
         return;
     }
-
+    console.log("handlePointerMove");
     e.preventDefault();
     e.stopPropagation();
+    const action = {
+        type: "pointermove",
+        clientX: e.clientX,
+        clientY: e.clientY,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType,
+        pressure: e.pressure,
+        buttons: e.buttons,
+        button: e.button,
+    };
+    STATE.recordedActions.push(action);
     injectTouch(
         e.buttons === 0
             ? AndroidMotionEventAction.HoverMove
@@ -112,9 +146,20 @@ function handlePointerUp(e: PointerEvent<HTMLDivElement>) {
     if (!STATE.client) {
         return;
     }
-
+    console.log("handlePointerUp");
     e.preventDefault();
     e.stopPropagation();
+    const action = {
+        type: "pointerup",
+        clientX: e.clientX,
+        clientY: e.clientY,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType,
+        pressure: e.pressure,
+        buttons: e.buttons,
+        button: e.button,
+    };
+    STATE.recordedActions.push(action);
     injectTouch(AndroidMotionEventAction.Up, e);
 }
 
@@ -122,9 +167,20 @@ function handlePointerLeave(e: PointerEvent<HTMLDivElement>) {
     if (!STATE.client) {
         return;
     }
-
+    console.log("handlePointerLeave");
     e.preventDefault();
     e.stopPropagation();
+    const action = {
+        type: "pointerleave",
+        clientX: e.clientX,
+        clientY: e.clientY,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType,
+        pressure: e.pressure,
+        buttons: e.buttons,
+        button: e.button,
+    };
+    // STATE.recordedActions.push(action);
     // Because pointer capture on pointer down, this event only happens for hovering mouse and pen.
     // Release the injected pointer, otherwise it will stuck at the last position.
     injectTouch(AndroidMotionEventAction.HoverExit, e);
@@ -133,6 +189,73 @@ function handlePointerLeave(e: PointerEvent<HTMLDivElement>) {
 
 function handleContextMenu(e: MouseEvent<HTMLDivElement>) {
     e.preventDefault();
+}
+
+export function replayActions() {
+    if (!STATE.client) {
+        return;
+    }
+    for (const action of STATE.recordedActions) {
+        switch (action.type) {
+            case "wheel":
+                STATE.client!.controlMessageWriter!.injectScroll({
+                    screenWidth: STATE.client!.screenWidth!,
+                    screenHeight: STATE.client!.screenHeight!,
+                    pointerX: action.x,
+                    pointerY: action.y,
+                    scrollX: action.scrollX,
+                    scrollY: action.scrollY,
+                    buttons: 0,
+                });
+                break;
+            case "pointerdown":
+                injectTouch(AndroidMotionEventAction.Down, {
+                    ...action,
+                    currentTarget: STATE.fullScreenContainer!,
+                } as PointerEvent<HTMLDivElement>);
+                break;
+            case "pointermove":
+                injectTouch(
+                    action.buttons === 0
+                        ? AndroidMotionEventAction.HoverMove
+                        : AndroidMotionEventAction.Move,
+                    { ...action, currentTarget: STATE.fullScreenContainer! } as PointerEvent<HTMLDivElement>
+                );
+                break;
+            case "pointerup":
+                injectTouch(AndroidMotionEventAction.Up, {
+                    ...action,
+                    currentTarget: STATE.fullScreenContainer!,
+                } as PointerEvent<HTMLDivElement>);
+                break;
+            case "pointerleave":
+                injectTouch(AndroidMotionEventAction.HoverExit, {
+                    ...action,
+                    currentTarget: STATE.fullScreenContainer!,
+                } as PointerEvent<HTMLDivElement>);
+                injectTouch(AndroidMotionEventAction.Up, {
+                    ...action,
+                    currentTarget: STATE.fullScreenContainer!,
+                } as PointerEvent<HTMLDivElement>);
+                break;
+            case 'keydown':
+            case 'keyup': {
+                const keyCode = AndroidKeyCode[action.key as keyof typeof AndroidKeyCode];
+                if (!keyCode) {
+                    continue;
+                }
+                STATE.client.controlMessageWriter?.injectKeyCode({
+                    action: action.type === 'keydown' ? AndroidKeyEventAction.Down : AndroidKeyEventAction.Up,
+                    keyCode,
+                    metaState: action.metaState,
+                    repeat: 0,
+                });
+                break;
+            }
+            default:
+                break;
+        }
+    }
 }
 
 export function VideoContainer() {
@@ -147,13 +270,13 @@ export function VideoContainer() {
             return;
         }
 
-        container.addEventListener("wheel", handleWheel, {
-            passive: false,
-        });
+        // container.addEventListener("wheel", handleWheel, {
+        //     passive: false,
+        // });
 
-        return () => {
-            container.removeEventListener("wheel", handleWheel);
-        };
+        // return () => {
+        //     container.removeEventListener("wheel", handleWheel);
+        // };
     }, [container]);
 
     return (

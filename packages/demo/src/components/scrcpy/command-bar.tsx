@@ -247,6 +247,7 @@ const ITEMS = computed(() => {
     );
 
     result.push(
+        
         {
             key: "NavigationBar",
             iconProps: { iconName: Icons.PanelBottom },
@@ -256,6 +257,17 @@ const ITEMS = computed(() => {
             iconOnly: true,
             onClick: action(() => {
                 STATE.navigationBarVisible = !STATE.navigationBarVisible;
+            }),
+        },
+        {
+            key: "Labeler",
+            iconProps: { iconName: Icons.Document20 },
+            canCheck: true,
+            checked: STATE.labelerVisible,
+            text: "Labeler",
+            iconOnly: true,
+            onClick: action(() => {
+                STATE.labelerVisible = !STATE.labelerVisible;
             }),
         },
         {

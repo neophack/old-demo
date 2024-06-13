@@ -169,10 +169,6 @@ function App({ Component, pageProps }: AppProps) {
                         <div className={classes.title}>Tango</div>
                     </StackItem>
 
-                    <ExternalLink href="https://app.tangoapp.dev">
-                        <PrimaryButton>Try our new app</PrimaryButton>
-                    </ExternalLink>
-
                     <IconButton
                         iconProps={{ iconName: "PersonFeedback" }}
                         title="Feedback"

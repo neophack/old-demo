@@ -6,6 +6,7 @@ import {
     AndroidKeyEventAction,
     AndroidKeyEventMeta,
 } from "@yume-chan/scrcpy";
+import { STATE } from "./state";
 
 export interface KeyboardInjector extends Disposable {
     down(key: string): Promise<void>;
@@ -124,6 +125,9 @@ export class ScrcpyKeyboardInjector implements KeyboardInjector {
 
         this.setModifier(keyCode, true);
         this._keys.add(keyCode);
+        const metaState = this.getMetaState();
+        const repeat = 0;
+        STATE.recordedActions.push({ type: 'keydown', key,  metaState,repeat });
         await this.client.controlMessageWriter?.injectKeyCode({
             action: AndroidKeyEventAction.Down,
             keyCode,
@@ -140,6 +144,9 @@ export class ScrcpyKeyboardInjector implements KeyboardInjector {
 
         this.setModifier(keyCode, false);
         this._keys.delete(keyCode);
+        const metaState = this.getMetaState();
+        const repeat = 0;
+        STATE.recordedActions.push({ type: 'keyup', key,  metaState,repeat });
         await this.client.controlMessageWriter?.injectKeyCode({
             action: AndroidKeyEventAction.Up,
             keyCode,
@@ -192,8 +199,11 @@ export class AoaKeyboardInjector implements KeyboardInjector {
         if (!keyCode) {
             return;
         }
-
+        console.log("aoadown",key);
         this.hidKeyboard.down(keyCode);
+        const metaState = 0;
+        const repeat = 0;
+        STATE.recordedActions.push({ type: 'keydown', key, metaState,repeat });
         await this.aoaKeyboard.sendInputReport(
             this.hidKeyboard.serializeInputReport()
         );
@@ -206,6 +216,10 @@ export class AoaKeyboardInjector implements KeyboardInjector {
         }
 
         this.hidKeyboard.up(keyCode);
+
+        const metaState = 0;
+        const repeat = 0;
+        STATE.recordedActions.push({ type: 'keyup', key, metaState,repeat });
         await this.aoaKeyboard.sendInputReport(
             this.hidKeyboard.serializeInputReport()
         );
@@ -219,6 +233,10 @@ export class AoaKeyboardInjector implements KeyboardInjector {
     }
 
     public async dispose(): Promise<void> {
-        await this.aoaKeyboard.unregister();
+        try {
+            await this.aoaKeyboard.unregister();
+        } catch (error) {
+            console.error('An unexpected error occurred:', error);
+        }
     }
 }

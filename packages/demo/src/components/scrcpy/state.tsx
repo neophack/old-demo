@@ -44,7 +44,36 @@ import {
 } from "./input";
 import { MatroskaMuxingRecorder, RECORD_STATE } from "./recorder";
 import { SCRCPY_SETTINGS_FILENAME, SETTING_STATE } from "./settings";
+import {
+    AndroidKeyCode,
+    AndroidKeyEventAction,
+    AndroidKeyEventMeta,
+} from "@yume-chan/scrcpy";
+interface WheelAction {
+    type: 'wheel';
+    x: number;
+    y: number;
+    scrollX: number;
+    scrollY: number;
+}
 
+interface PointerAction {
+    type: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointerleave';
+    clientX: number;
+    clientY: number;
+    pointerId: number;
+    pointerType: string;
+    pressure: number;
+    buttons: number;
+    button: number;
+}
+interface KeyAction {
+    type: 'keydown' | 'keyup';
+    key: string;
+    metaState: AndroidKeyEventMeta;
+    repeat: number;
+}
+export type RecordedAction = WheelAction | PointerAction | KeyAction;
 export class ScrcpyPageState {
     running = false;
 
@@ -55,6 +84,11 @@ export class ScrcpyPageState {
 
     logVisible = false;
     log: string[] = [];
+    labelerVisible = true;
+    labeler: string[] = [];
+
+    recordedActions:RecordedAction[] = [];
+    
     demoModeVisible = false;
     navigationBarVisible = true;
 

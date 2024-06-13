@@ -10,3 +10,4 @@ export * from "./list-selection";
 export * from "./log-view";
 export * from "./resize-observer";
 export * from "./tabby-frame-manager";
+export * from "./labeler";
