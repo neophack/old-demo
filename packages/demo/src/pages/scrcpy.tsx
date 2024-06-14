@@ -257,23 +257,23 @@ const Scrcpy: NextPage = () => {
                         </div>
                         <div
                             style={{
-                                padding: 4,
+                                padding: 0,
                                 overflow: "hidden auto",
                                 display: STATE.labelerVisible ? "block" : "none",
-                                width: 700,
+                                width: 800,
                                 fontFamily: "monospace",
                                 overflowY: "auto",
                                 whiteSpace: "pre-wrap",
                                 wordWrap: "break-word",
                             }}
                         >
-                           
-                           <LabelerPanel
-                            style={{
-                                display: STATE.labelerVisible
-                                    ? "block"
-                                    : "none",
-                            }}
+                            
+                            <LabelerPanel
+                                style={{
+                                    display: STATE.labelerVisible
+                                        ? "block"
+                                        : "none",
+                                }}
                             />
                         </div>
                         <div

@@ -21,7 +21,7 @@ function handleWheel(e: WheelEvent) {
     if (!STATE.client) {
         return;
     }
-    console.log("handleWheel");
+    // console.log("handleWheel");
     STATE.fullScreenContainer!.focus();
     e.preventDefault();
     e.stopPropagation();
@@ -96,7 +96,7 @@ function handlePointerDown(e: PointerEvent<HTMLDivElement>) {
     if (!STATE.client) {
         return;
     }
-    console.log("handlePointerDown");
+    // console.log("handlePointerDown");
     STATE.fullScreenContainer!.focus();
     e.preventDefault();
     e.stopPropagation();
@@ -120,7 +120,7 @@ function handlePointerMove(e: PointerEvent<HTMLDivElement>) {
     if (!STATE.client) {
         return;
     }
-    console.log("handlePointerMove");
+    // console.log("handlePointerMove");
     e.preventDefault();
     e.stopPropagation();
     const action = {
@@ -146,7 +146,7 @@ function handlePointerUp(e: PointerEvent<HTMLDivElement>) {
     if (!STATE.client) {
         return;
     }
-    console.log("handlePointerUp");
+    // console.log("handlePointerUp");
     e.preventDefault();
     e.stopPropagation();
     const action = {
@@ -167,7 +167,7 @@ function handlePointerLeave(e: PointerEvent<HTMLDivElement>) {
     if (!STATE.client) {
         return;
     }
-    console.log("handlePointerLeave");
+    // console.log("handlePointerLeave");
     e.preventDefault();
     e.stopPropagation();
     const action = {
@@ -191,72 +191,6 @@ function handleContextMenu(e: MouseEvent<HTMLDivElement>) {
     e.preventDefault();
 }
 
-export function replayActions() {
-    if (!STATE.client) {
-        return;
-    }
-    for (const action of STATE.recordedActions) {
-        switch (action.type) {
-            case "wheel":
-                STATE.client!.controlMessageWriter!.injectScroll({
-                    screenWidth: STATE.client!.screenWidth!,
-                    screenHeight: STATE.client!.screenHeight!,
-                    pointerX: action.x,
-                    pointerY: action.y,
-                    scrollX: action.scrollX,
-                    scrollY: action.scrollY,
-                    buttons: 0,
-                });
-                break;
-            case "pointerdown":
-                injectTouch(AndroidMotionEventAction.Down, {
-                    ...action,
-                    currentTarget: STATE.fullScreenContainer!,
-                } as PointerEvent<HTMLDivElement>);
-                break;
-            case "pointermove":
-                injectTouch(
-                    action.buttons === 0
-                        ? AndroidMotionEventAction.HoverMove
-                        : AndroidMotionEventAction.Move,
-                    { ...action, currentTarget: STATE.fullScreenContainer! } as PointerEvent<HTMLDivElement>
-                );
-                break;
-            case "pointerup":
-                injectTouch(AndroidMotionEventAction.Up, {
-                    ...action,
-                    currentTarget: STATE.fullScreenContainer!,
-                } as PointerEvent<HTMLDivElement>);
-                break;
-            case "pointerleave":
-                injectTouch(AndroidMotionEventAction.HoverExit, {
-                    ...action,
-                    currentTarget: STATE.fullScreenContainer!,
-                } as PointerEvent<HTMLDivElement>);
-                injectTouch(AndroidMotionEventAction.Up, {
-                    ...action,
-                    currentTarget: STATE.fullScreenContainer!,
-                } as PointerEvent<HTMLDivElement>);
-                break;
-            case 'keydown':
-            case 'keyup': {
-                const keyCode = AndroidKeyCode[action.key as keyof typeof AndroidKeyCode];
-                if (!keyCode) {
-                    continue;
-                }
-                STATE.client.controlMessageWriter?.injectKeyCode({
-                    action: action.type === 'keydown' ? AndroidKeyEventAction.Down : AndroidKeyEventAction.Up,
-                    keyCode,
-                    metaState: action.metaState,
-                    repeat: 0,
-                });
-                break;
-            }
-            default:
-                break;
-        }
-    }
-}
 
 export function VideoContainer() {
     const classes = useClasses();
@@ -270,13 +204,13 @@ export function VideoContainer() {
             return;
         }
 
-        // container.addEventListener("wheel", handleWheel, {
-        //     passive: false,
-        // });
+        container.addEventListener("wheel", handleWheel, {
+            passive: false,
+        });
 
-        // return () => {
-        //     container.removeEventListener("wheel", handleWheel);
-        // };
+        return () => {
+            container.removeEventListener("wheel", handleWheel);
+        };
     }, [container]);
 
     return (

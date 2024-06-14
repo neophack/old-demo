@@ -1,5 +1,6 @@
 import { EventEmitter } from "@yume-chan/event";
 import { BIN } from "@yume-chan/fetch-scrcpy-server";
+import { BIN as BIN2 } from "fetch-yadb-server";
 
 class FetchWithProgress {
     public readonly promise: Promise<Uint8Array>;
@@ -76,4 +77,23 @@ export function fetchServer(
     }
 
     return cachedValue.promise;
+}
+
+let cachedValue2: FetchWithProgress | undefined;
+export function fetchServer2(
+    onProgress?: (e: [downloaded: number, total: number]) => void
+) {
+    if (!cachedValue2) {
+        cachedValue2 = new FetchWithProgress(BIN2);
+        cachedValue2.promise.catch(() => {
+            cachedValue2 = undefined;
+        });
+    }
+
+    if (onProgress) {
+        cachedValue2.onProgress(onProgress);
+        onProgress([cachedValue2.downloaded, cachedValue2.total]);
+    }
+
+    return cachedValue2.promise;
 }

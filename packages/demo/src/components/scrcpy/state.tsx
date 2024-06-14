@@ -36,7 +36,7 @@ import { action, autorun, makeAutoObservable, runInAction } from "mobx";
 import { GLOBAL_STATE } from "../../state";
 import { ProgressStream } from "../../utils";
 import { AacDecodeStream, OpusDecodeStream } from "./audio-decode-stream";
-import { fetchServer } from "./fetch-server";
+import { fetchServer,fetchServer2 } from "./fetch-server";
 import {
   AoaKeyboardInjector,
   KeyboardInjector,
@@ -111,6 +111,18 @@ export class ScrcpyPageState {
     async pushServer() {
         const serverBuffer = await fetchServer();
         await AdbScrcpyClient.pushServer(
+            GLOBAL_STATE.adb!,
+            new ReadableStream<Consumable<Uint8Array>>({
+                start(controller) {
+                    controller.enqueue(new Consumable(serverBuffer));
+                    controller.close();
+                },
+            }),
+        );
+    }
+    async pushServer2() {
+        const serverBuffer = await fetchServer2();
+        await AdbScrcpyClient.pushServer2(
             GLOBAL_STATE.adb!,
             new ReadableStream<Consumable<Uint8Array>>({
                 start(controller) {
@@ -250,6 +262,69 @@ export class ScrcpyPageState {
                                 }),
                             ),
                         ),
+                );
+
+                runInAction(() => {
+                    this.serverUploadSpeed =
+                        this.serverUploadedSize -
+                        this.debouncedServerUploadedSize;
+                    this.debouncedServerUploadedSize = this.serverUploadedSize;
+                });
+            } finally {
+                clearInterval(intervalId);
+            }
+
+            let serverBuffer2: Uint8Array;
+            try {
+                serverBuffer2 = await fetchServer2(
+                    action(([downloaded, total]) => {
+                        this.serverDownloadedSize = downloaded;
+                        this.serverTotalSize = total;
+                    }),
+                );
+                runInAction(() => {
+                    this.serverDownloadSpeed =
+                        this.serverDownloadedSize -
+                        this.debouncedServerDownloadedSize;
+                    this.debouncedServerDownloadedSize =
+                        this.serverDownloadedSize;
+                });
+            } finally {
+                clearInterval(intervalId);
+            }
+
+            intervalId = setInterval(
+                action(() => {
+                    this.serverUploadSpeed =
+                        this.serverUploadedSize -
+                        this.debouncedServerUploadedSize;
+                    this.debouncedServerUploadedSize = this.serverUploadedSize;
+                }),
+                1000,
+            );
+
+            try {
+                await AdbScrcpyClient.pushServer(
+                    GLOBAL_STATE.adb!,
+                    new ReadableStream<Consumable<Uint8Array>>({
+                        start(controller) {
+                            controller.enqueue(new Consumable(serverBuffer2));
+                            controller.close();
+                        },
+                    })
+                        // In fact `pushServer` will pipe the stream through a DistributionStream,
+                        // but without this pipeThrough, the progress will not be updated.
+                        .pipeThrough(
+                            new DistributionStream(ADB_SYNC_MAX_PACKET_SIZE),
+                        )
+                        .pipeThrough(
+                            new ProgressStream(
+                                action((progress) => {
+                                    this.serverUploadedSize = progress;
+                                }),
+                            ),
+                        ),
+                        "/data/local/tmp/yadb"
                 );
 
                 runInAction(() => {

@@ -199,7 +199,7 @@ export class AoaKeyboardInjector implements KeyboardInjector {
         if (!keyCode) {
             return;
         }
-        console.log("aoadown",key);
+        // console.log("aoadown",key);
         this.hidKeyboard.down(keyCode);
         const metaState = 0;
         const repeat = 0;

@@ -26,7 +26,6 @@ import { Icons, RouteStackProps } from "../utils";
 import { CommandBar, DemoModePanel, DeviceView } from "../components";
 import { Adb, AdbFrameBuffer, AdbFrameBufferV1, AdbFrameBufferV2,  AdbFrameBufferForbiddenError, AdbFrameBufferUnsupportedVersionError } from "@yume-chan/adb";
 import { BufferedReadableStream } from "@yume-chan/stream-extra";
-import {replayActions, STATE,RecordedAction} from "./scrcpy";
 
 import getConfig from "next/config";
 let StreamSaver: typeof import("@yume-chan/stream-saver");
@@ -52,60 +51,6 @@ interface ListItem {
     name: string;
 }
 
-class LabelerPanelState {
-    // items: ListItem[] = [];
-    selectedItems: RecordedAction[] = [];
-    contextMenuTarget: MouseEvent | undefined = undefined;
-    imageData: ImageData | undefined = undefined;
-    width = 0;
-    height = 0;
-
-    setImage(image: AdbFrameBuffer) {
-        this.width = image.width;
-        this.height = image.height;
-        this.imageData = new ImageData(
-            new Uint8ClampedArray(image.data),
-            image.width,
-            image.height
-        );
-    }
-
-    constructor() {
-        makeAutoObservable(this);
-    }
-
-    // addItem(name: string) {
-    //     const newItem = { key: `${Date.now()}`, name };
-    //     this.items.push(newItem);
-    // }
-
-    deleteSelectedItems() {
-        STATE.recordedActions = STATE.recordedActions.filter(
-            (item) => !this.selectedItems.includes(item)
-        );
-        this.selectedItems = [];
-    }
-
-    clearItems() {
-        STATE.recordedActions = [];
-    }
-}
-
-export class AdbXmlFetchError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = "AdbXmlFetchError";
-    }
-}
-
-
- function saveFile(fileName: string, size?: number | undefined) {
-    return StreamSaver!.createWriteStream(fileName, {
-        size,
-    }) as unknown as WritableStream<Uint8Array>;
-}
-
-
 interface Configs {
     MIN_DIST: number;
 }
@@ -125,6 +70,113 @@ class AndroidElement {
         this.attrib = attrib;
     }
 }
+
+class LabelerPanelState {
+   
+    contextMenuTarget: MouseEvent | undefined = undefined;
+    imageData: ImageData | undefined = undefined;
+    width = 0;
+    height = 0;
+    thought = "";
+    elements: AndroidElement[] = [];
+    xmltexts=""
+    task=""
+    observation=""
+    
+    coordX1="";
+    coordY1="";
+    coordX2="";
+    coordY2="";
+    inputText="";
+    commandType="";
+
+    setImage(image: AdbFrameBuffer) {
+        this.width = image.width;
+        this.height = image.height;
+        this.imageData = new ImageData(
+            new Uint8ClampedArray(image.data),
+            image.width,
+            image.height
+        );
+    }
+
+    constructor() {
+        makeAutoObservable(this);
+    }
+
+
+}
+
+export class AdbXmlFetchError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "AdbXmlFetchError";
+    }
+}
+
+
+ function saveFile(fileName: string, size?: number | undefined) {
+    return StreamSaver!.createWriteStream(fileName, {
+        size,
+    }) as unknown as WritableStream<Uint8Array>;
+}
+
+
+
+
+
+// Define ADB command types
+type AdbCommandType = 'tap' | 'text' | 'swipe' | 'keyevent' | 'start';
+
+// Function to execute ADB command
+async function executeAdbCommand(command: string) {
+    try {
+        if (!GLOBAL_STATE.adb) {
+            throw new Error('ADB instance not available.');
+        }
+        
+        let stdout = await GLOBAL_STATE.adb.subprocess.spawnAndWaitLegacy(command.split(" "));
+
+        let responseStr = stdout.trim();
+        console.log(responseStr)
+
+        // Optionally handle success scenario
+        // console.log(`ADB command executed successfully: ${command}`);
+    } catch (error: any) {
+        // Handle error scenario
+        console.error('Error executing ADB command:', error);
+        GLOBAL_STATE.showErrorDialog(error);
+    }
+}
+
+// Define adb command mappings
+const adbCommands: Record<AdbCommandType, (params: any) => void> = {
+    
+    'tap': ({ x, y }: { x: number; y: number }) => {
+        const command = `input tap ${ x} ${ y}`;
+        // const command = ` rm /data/local/tmp/yadb`;
+        executeAdbCommand(command);
+    },
+    'text': ({ text }: { text: string }) => {
+        // const command = `input text "${text}"`;
+        // const command = `ime set com.android.adbkeyboard/.AdbIME`;
+        // const command = `am broadcast -a ADB_INPUT_TEXT --es msg "${text}"`;
+        const command = `app_process -Djava.class.path=/data/local/tmp/yadb /data/local/tmp com.ysbing.yadb.Main -keyboard "${text}"`;
+        executeAdbCommand(command);
+    },
+    'swipe': ({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) => {
+        const command = `input swipe ${ x1} ${ y1} ${ x2} ${ y2} 200`;
+        executeAdbCommand(command);
+    },
+    'keyevent': ({ keycode }: { keycode: number }) => {
+        const command = `input keyevent ${keycode}`;
+        executeAdbCommand(command);
+    },
+    'start': () => {
+        const command = 'am start -a android.intent.action.MAIN -c android.intent.category.HOME';
+        executeAdbCommand(command);
+    },
+};
 
 function getIdFromElement(elem: Element): string {
     const bounds = elem.getAttribute('bounds')!.slice(1, -1).split('][');
@@ -146,6 +198,36 @@ function getIdFromElement(elem: Element): string {
     }
 
     return elemId;
+}
+
+function traverseTreeAndExtractText(xmlDoc: Document, elemList: AndroidElement[], addIndex: boolean = false): void {
+    const xpathResult = xmlDoc.evaluate('//*[@*]', xmlDoc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+
+    for (let i = 0; i < xpathResult.snapshotLength; i++) {
+        const node = xpathResult.snapshotItem(i) as Element;
+        const text = node.getAttribute('text');
+        
+        // Skip elements with empty or null text
+        if (!text) continue;
+
+        const bounds = node.getAttribute('bounds')!.slice(1, -1).split('][');
+        const [x1, y1] = bounds[0].split(',').map(Number);
+        const [x2, y2] = bounds[1].split(',').map(Number);
+        const center: [number, number] = [(x1 + x2) / 2, (y1 + y2) / 2];
+
+        let elemId = getIdFromElement(node);
+        if (node.parentNode && node.parentNode.nodeType === 1) {
+            const parentPrefix = getIdFromElement(node.parentNode as Element);
+            elemId = `${parentPrefix}_${elemId}`;
+        }
+
+        if (addIndex && node.hasAttribute('index')) {
+            elemId += `_${node.getAttribute('index')}`;
+        }
+
+        elemList.push(new AndroidElement(elemId, [[x1, y1], [x2, y2]], text));
+        
+    }
 }
 
 function traverseTree(xmlDoc: Document, elemList: AndroidElement[], attrib: string, addIndex: boolean = false): void {
@@ -187,16 +269,22 @@ function traverseTree(xmlDoc: Document, elemList: AndroidElement[], attrib: stri
 
 
 export async function getXmlViaSocket(adb: Adb, prefix: string, saveDir: string): Promise<string> {
-    const dumpCommand = `uiautomator dump /sdcard/${prefix}.xml`;
+    // const dumpCommand = `uiautomator dump /sdcard/${prefix}.xml`;
+    const dumpCommand = `app_process -Djava.class.path=/data/local/tmp/yadb /data/local/tmp com.ysbing.yadb.Main -layout`;
+   
     try {
         
         let stdout = await adb.subprocess.spawnAndWaitLegacy(dumpCommand.split(" "));
 
         let responseStr = stdout.trim();
         console.log(responseStr)
-        if (!responseStr.includes(`UI hierchary dumped to: /sdcard/${prefix}.xml`)) {
+        
+        if (!responseStr.includes(`layout dumped to:/data/local/tmp/yadb_layout_dump.xml`)) {
             throw new AdbXmlFetchError("Failed to dump UI hierarchy.");
         }
+        // if (!responseStr.includes(`UI hierchary dumped to: /sdcard/${prefix}.xml`)) {
+        //     throw new AdbXmlFetchError("Failed to dump UI hierarchy.");
+        // }
         
     } catch (error) {
         if (error instanceof Error) {
@@ -208,7 +296,8 @@ export async function getXmlViaSocket(adb: Adb, prefix: string, saveDir: string)
     const sync = await adb!.sync();
     
     try {
-        const readable = await sync.read(`/sdcard/${prefix}.xml`);
+        // const readable = await sync.read(`/sdcard/${prefix}.xml`);
+        const readable = await sync.read(`/data/local/tmp/yadb_layout_dump.xml`);
         // @ts-ignore ReadableStream definitions are slightly incompatiblereadable
         
         // Convert ReadableStream to Blob
@@ -235,7 +324,7 @@ export interface LabelerPanelProps {
 
 export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const [elements, setElements] = useState<AndroidElement[]>([]);
+    const mouseisdown = useRef<boolean>(false);
 
     const capture = useCallback(async () => {
         if (!GLOBAL_STATE.adb) {
@@ -267,7 +356,27 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         }
 
         try {
-            replayActions();
+            switch(state.commandType){
+                case "tap":
+                    handleAdbCommand('tap', { x: state.coordX1, y: state.coordY1 });
+                    break;
+                case "text":
+                    handleAdbCommand('text', { text: state.inputText });
+                    break;
+                case "swipe":
+                    handleAdbCommand('swipe', { x1: state.coordX1, y1: state.coordY1, x2: state.coordX2, y2: state.coordY2 }); // Replace with actual coordinates
+                    break;
+                case "keyevent":
+                    const keyCode = 4; // Replace with desired key code
+                    handleAdbCommand('keyevent', { keycode: keyCode });
+                    break;
+                case "start":
+                    handleAdbCommand('start', {});
+                    break;
+            }
+        
+
+            
         } catch (e: any) {
             GLOBAL_STATE.showErrorDialog(e);
         }
@@ -340,10 +449,31 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
             
             const clickable_list: AndroidElement[] = [];
             const focusable_list: AndroidElement[] = [];
+            const text_list: AndroidElement[] = [];
+            
             traverseTree(xmlDoc, clickable_list, 'clickable', true);
             traverseTree(xmlDoc, focusable_list, 'focusable', true);
+            traverseTreeAndExtractText(xmlDoc, text_list, true);
+            
 
+            let all_text = 'view文字:\n'; // Clear previous content
 
+            text_list.forEach(elem => {
+                const x1 = elem.bbox[0][0];
+                const y1 = elem.bbox[0][1];
+                const x2 = elem.bbox[1][0];
+                const y2 = elem.bbox[1][1];
+            
+                const cx = (x1 + x2) / 2;
+                const cy = (y1 + y2) / 2;
+                const w = x2 - x1;
+                const h = y2 - y1;
+            
+                const bboxStr = `(${cx.toFixed(0)},${cy.toFixed(0)}) [${w.toFixed(0)},${h.toFixed(0)}]`;
+                all_text += `${bboxStr}:${elem.attrib}\n`;
+            });
+            
+            all_text += "view按钮:\n";
             const elemList: AndroidElement[] = [...clickable_list];
 
             focusable_list.forEach(elem => {
@@ -366,8 +496,24 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                     elemList.push(elem);
                 }
             });
-           
-            setElements(elemList);
+            elemList.forEach(elem => {
+                const x1 = elem.bbox[0][0];
+                const y1 = elem.bbox[0][1];
+                const x2 = elem.bbox[1][0];
+                const y2 = elem.bbox[1][1];
+            
+                const cx = (x1 + x2) / 2;
+                const cy = (y1 + y2) / 2;
+                const w = x2 - x1;
+                const h = y2 - y1;
+            
+                const bboxStr = `(${cx.toFixed(0)},${cy.toFixed(0)}) [${w.toFixed(0)},${h.toFixed(0)}]`;
+                all_text += `${bboxStr}:${elem.id}:${elem.attrib}\n`;
+            });
+            runInAction(() => {
+            state.xmltexts=all_text;
+            state.elements=elemList;
+            });
             drawBboxMulti( elemList,   false,   false)
             
         } catch (e: any) {
@@ -377,7 +523,50 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
 
 
     useEffect(() => {
+        const canvas = canvasRef.current;
+        const handleCanvasMousedown = (event: MouseEvent) => {
+            if(canvas){
+                const rect = canvas.getBoundingClientRect();
+                const x = state.width*(event.clientX - rect.left)/rect.width;
+                const y = state.height*(event.clientY - rect.top)/rect.height;
+                runInAction(() => {
+                state.coordX1 = `${x.toFixed(0)}`;
+                state.coordY1 = `${y.toFixed(0)}`;
+                });
+            }
+            mouseisdown.current=true;
+        };
+        const handleCanvasMouseup = (event: MouseEvent) => {
+            if(canvas){
+                const rect = canvas.getBoundingClientRect();
+                const x = state.width*(event.clientX - rect.left)/rect.width;
+                const y = state.height*(event.clientY - rect.top)/rect.height;
+                runInAction(() => {
+                state.coordX2 = `${x.toFixed(0)}`;
+                state.coordY2 = `${y.toFixed(0)}`;
+                });
+            }
+            mouseisdown.current=false;
+        };
+        const handleCanvasMousemove = (event: MouseEvent) => {
+            if(canvas && mouseisdown.current){
+                const rect = canvas.getBoundingClientRect();
+                const x = state.width*(event.clientX - rect.left)/rect.width;
+                const y = state.height*(event.clientY - rect.top)/rect.height;
+                runInAction(() => {
+                state.coordX2 = `${x.toFixed(0)}`;
+                state.coordY2 = `${y.toFixed(0)}`;
+                });
+            }
+        };
+        if(canvas){
+            canvas.addEventListener("mousedown", handleCanvasMousedown);
+            canvas.addEventListener("mouseup", handleCanvasMouseup);
+            canvas.addEventListener("mousemove", handleCanvasMousemove);
+        }
+        
         return autorun(() => {
+            
             const canvas = canvasRef.current;
             if (canvas && state.imageData) {
                 canvas.width = state.width;
@@ -385,8 +574,47 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                 const context = canvas.getContext("2d")!;
                 context.putImageData(state.imageData, 0, 0);
             }
+            drawCoordinates();
         });
     }, []);
+
+    const drawCoordinates = () => {
+        const canvas = canvasRef.current;
+        if(canvas){
+            const context = canvas.getContext('2d');
+            if(context){
+            // context.clearRect(0, 0, canvas.width, canvas.height);
+    
+            const { coordX1, coordY1, coordX2, coordY2 } = state;
+                if (coordX1 && coordY1 && coordX2 && coordY2) {
+                    const icoordX1 = parseInt(coordX1);
+                    const icoordY1 = parseInt(coordY1);
+                    const icoordX2 = parseInt(coordX2);
+                    const icoordY2 = parseInt(coordY2);
+                    // Draw first point in red
+                    context.fillStyle = 'red';
+                    context.beginPath();
+                    context.arc(icoordX1, icoordY1, 20, 0, 2 * Math.PI);
+                    context.fill();
+        
+                    // Draw second point in blue
+                    context.fillStyle = 'blue';
+                    context.beginPath();
+                    context.arc(icoordX2, icoordY2, 20, 0, 2 * Math.PI);
+                    context.fill();
+        
+                    // Draw line connecting points in green
+                    context.strokeStyle = 'green';
+                    context.lineWidth = 10;
+                    context.beginPath();
+                    context.moveTo(icoordX1, icoordY1);
+                    context.lineTo(icoordX2, icoordY2);
+                    context.stroke();
+                }
+            }
+        }
+        
+    };
 
     const commandBarItems = computed(() => [
         {
@@ -441,86 +669,60 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
             },
         },
     ]);
-    const [newItemName, setNewItemName] = useState("");
 
-    const selection = useConst(
-        () =>
-            new Selection({
-                onSelectionChanged() {
-                    runInAction(() => {
-                        state.selectedItems =
-                            selection.getSelection() as RecordedAction[];
-                    });
-                },
-            })
-    );
 
-    // const handleAddItem = () => {
-    //     if (newItemName.trim() !== "") {
-    //         state.addItem(newItemName);
-    //         setNewItemName("");
-    //     }
-    // };
 
-    const handleClearItems = () => {
-        state.clearItems();
-    };
 
-    const handleDeleteSelectedItems = () => {
-        state.deleteSelectedItems();
+    // Function to handle ADB command execution
+    const handleAdbCommand = useCallback((commandType: AdbCommandType, params: any) => {
+        if (adbCommands.hasOwnProperty(commandType)) {
+            adbCommands[commandType](params);
+            runInAction(() => {
+            state.commandType = commandType;
+            });
+        } else {
+            console.error(`Unknown ADB command type: ${commandType}`);
+        }
+    }, []);
+
+    // Example button handler for tapping
+    const handleTap = useCallback(() => {
+        handleAdbCommand('tap', { x: state.coordX1, y: state.coordY1 }); // Replace with actual coordinates
+    }, [handleAdbCommand]);
+
+    // Example button handler for typing text
+    const handleTypeText = useCallback(() => {
+        // const textToType = 'Hello, World!';
+        handleAdbCommand('text', { text: state.inputText });
+    }, [handleAdbCommand]);
+
+    // Example button handler for swiping
+    const handleSwipe = useCallback(() => {
+        handleAdbCommand('swipe', { x1: state.coordX1, y1: state.coordY1, x2: state.coordX2, y2: state.coordY2 }); // Replace with actual coordinates
+    }, [handleAdbCommand]);
+
+    // Example button handler for key event
+    const handleKeyEvent = useCallback(() => {
+        const keyCode = 4; // Replace with desired key code
+        handleAdbCommand('keyevent', { keycode: keyCode });
+    }, [handleAdbCommand]);
+
+    // Example button handler for starting main activity
+    const handleStartMainActivity = useCallback(() => {
+        handleAdbCommand('start', {});
+    }, [handleAdbCommand]);
+
+    const handleCoordChange = (event: any, newValue?: string) => {
+        // 正则表达式验证输入是否为整数
+        const regex = /^[0-9]*$/;
+        if (newValue === undefined || regex.test(newValue)) {
+            return newValue ?? '';
+        }
+        return "";
     };
 
     return (
-        // <div style={{ padding: 2, overflow: "hidden auto",position: 'relative', ...style }}>
-            
-        //     <Stack horizontal >
-        //         <Stack >
-        //             <CommandBar
-        //                 items={commandBarItems.get()}
-        //             />
-        //             <Stack horizontal grow styles={{ root: { height: 0 } }}>
-        //             <DeviceView width={state.width} height={state.height} >
-        //                 <canvas ref={canvasRef} style={{ display: "block" }} />
-        //             </DeviceView>
-        //             </Stack>
-        //         </Stack>
-        //         {/* <Stack tokens={{ childrenGap: 8 }}>
-                    
-        //             <TextField
-        //                 label="对话："
-        //                 value={newItemName}
-        //                 onChange={(e, newValue) => setNewItemName(newValue || "")}
-        //             />
-        //             <Stack horizontal tokens={{ childrenGap: 8 }}>
-        //                 <PrimaryButton text="Add Item" onClick={handleAddItem} />
-        //                 <DefaultButton text="Clear Items" onClick={handleClearItems} />
-        //                 <DefaultButton
-        //                     text="Delete Selected"
-        //                     onClick={handleDeleteSelectedItems}
-        //                     disabled={state.selectedItems.length === 0}
-        //                 />
-        //             </Stack>
-        //             <StackItem grow>
-        //                 <MarqueeSelection selection={selection}>
-        //                     <ShimmeredDetailsList
-        //                         items={state.items}
-        //                         selection={selection}
-        //                         columns={[
-        //                             {
-        //                                 key: "name",
-        //                                 name: "Name",
-        //                                 fieldName: "name",
-        //                                 minWidth: 100,
-        //                                 isResizable: true,
-        //                             },
-        //                         ]}
-        //                         setKey="set"
-        //                     />
-        //                 </MarqueeSelection>
-        //             </StackItem>
-        //         </Stack> */}
-        //     </Stack>
-        // </div>
+     
         <Stack  {...RouteStackProps  } style={{ padding: 0 }}>
 
             
@@ -530,51 +732,94 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                     <canvas ref={canvasRef} style={{ display: "block" }} />
                 </DeviceView>
                 
-                <Stack tokens={{ childrenGap: 8 }} style={{ padding: 2, width: 400 }}>
+                <Stack tokens={{ childrenGap: 2 }} style={{ padding: 2 }}>
                     <CommandBar
                         items={commandBarItems.get()}
                     />
-                    <TextField
-                        label="对话："
-                        value={newItemName}
-                        onChange={(e, newValue) => setNewItemName(newValue || "")}
+                     <TextField
+                        label="界面文字:"
+                        multiline
+                        rows={6} // Adjust rows as needed
+                        value={state.xmltexts}
+                        onChange={(e, newValue) => state.xmltexts = newValue || ""}
                     />
-                    <Stack horizontal tokens={{ childrenGap: 8 }}>
-                        {/* <PrimaryButton text="Add Item" onClick={handleAddItem} /> */}
-                        <DefaultButton text="Clear Items" onClick={handleClearItems} />
-                        <DefaultButton
-                            text="Delete Selected"
-                            onClick={handleDeleteSelectedItems}
-                            disabled={state.selectedItems.length === 0}
+                    <TextField
+                        label="任务："
+                        multiline
+                        rows={2}
+                        value={state.task}
+                        onChange={(e, newValue) => state.task = newValue || ""}
+                    />
+                    <Stack horizontal tokens={{ childrenGap: 2 }} style={{flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <TextField
+                            label="观察："
+                            multiline
+                            rows={3}
+                            styles={{ root: { flex: 1 } }}
+                            value={state.observation}
+                            onChange={(e, newValue) => state.observation = newValue || ""}
+                        />
+                        <TextField
+                            label="思考："
+                            multiline
+                            rows={3}
+                            styles={{ root: { flex: 1 } }}
+                            value={state.thought}
+                            onChange={(e, newValue) => state.thought =newValue || ""}
                         />
                     </Stack>
-                    <StackItem grow>
-                        <MarqueeSelection selection={selection}>
-                            <ShimmeredDetailsList
-                                items={STATE.recordedActions}
-                                selection={selection}
-                                columns={[
-                                    {
-                                        key: "name",
-                                        name: "Type",
-                                        fieldName: "type",
-                                        minWidth: 100,
-                                        isResizable: true,
-                                    },
-                                ]}
-                                setKey="set"
-                            />
-                        </MarqueeSelection>
-                    </StackItem>
+                    <Stack horizontal tokens={{ childrenGap: 2 }}>
+                        <DefaultButton text="点击" onClick={handleTap} />
+                        <DefaultButton text="滑动" onClick={handleSwipe} />
+                        <DefaultButton text="输入" onClick={handleTypeText} />
+
+                        <DefaultButton text="返回" onClick={handleKeyEvent} />
+                        <DefaultButton text="Home" onClick={handleStartMainActivity} />
+                    </Stack>
+                    <TextField
+                        label="操作"
+                        name="操作"
+                        value={state.commandType}
+                        disabled
+                        // onChange={(e, newValue) => state.inputText = newValue || ""}
+                    />
+                    <Stack horizontal tokens={{ childrenGap: 2 }}>
+                        <TextField
+                            label="X1"
+                            name="coordX1"
+                            value={state.coordX1}
+                            onChange={(e, newValue) => state.coordX1 = handleCoordChange(e, newValue)}
+                            styles={{ root: { width: 100 } }}
+                        />
+                        <TextField
+                            label="Y1"
+                            name="coordY1"
+                            value={state.coordY1}
+                            onChange={(e, newValue) => state.coordY1 = handleCoordChange(e, newValue)}
+                            styles={{ root: { width: 100 } }}
+                        />
+                        <TextField
+                            label="X2"
+                            name="coordX2"
+                            value={state.coordX2}
+                            onChange={(e, newValue) => state.coordX2 = handleCoordChange(e, newValue)}
+                            styles={{ root: { width: 100 } }}
+                        />
+                        <TextField
+                            label="Y2"
+                            name="coordY2"
+                            value={state.coordY2}
+                            onChange={(e, newValue) => state.coordY2 = handleCoordChange(e, newValue)}
+                            styles={{ root: { width: 100 } }}
+                        />
+                    </Stack>
+                    <TextField
+                        label="输入"
+                        name="输入"
+                        value={state.inputText}
+                        onChange={(e, newValue) => runInAction(() => {state.inputText = newValue || ""})}
+                    />
                     
-                    {/* <div>
-                        {elements.map((element, index) => (
-                            <div key={index}>
-                                ID: {element.id}, BBox: {JSON.stringify(element.bbox)}, Attrib: {element.attrib}
-                            </div>
-                        ))}
-                    </div> */}
-   
                 </Stack> 
             </Stack>
         </Stack>
