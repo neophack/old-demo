@@ -83,6 +83,8 @@ export class ScrcpyPageState {
     isFullScreen = false;
 
     logVisible = false;
+    listVisible = false;
+    currentFile = "";
     log: string[] = [];
     labelerVisible = true;
     labeler: string[] = [];

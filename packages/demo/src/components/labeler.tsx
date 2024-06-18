@@ -13,6 +13,7 @@ import {
     DefaultButton,
     IconButton,
     Stack,
+    Dialog,
 } from "@fluentui/react";
 import { autorun, makeAutoObservable, reaction, runInAction } from "mobx";
 import { observer } from "mobx-react-lite";
@@ -20,12 +21,14 @@ import { CSSProperties, useCallback, useState } from "react";
 import { GLOBAL_STATE } from "../state";
 import { useConst } from "@fluentui/react-hooks";
 // import { AdbFrameBuffer, AdbFrameBufferV2 } from "@yume-chan/adb";
-import {  useEffect, useRef } from "react";
-import { action,  computed } from "mobx";
+import { useEffect, useRef } from "react";
+import { action, computed } from "mobx";
 import { Icons, RouteStackProps } from "../utils";
 import { CommandBar, DemoModePanel, DeviceView } from "../components";
-import { Adb, AdbFrameBuffer, AdbFrameBufferV1, AdbFrameBufferV2,  AdbFrameBufferForbiddenError, AdbFrameBufferUnsupportedVersionError } from "@yume-chan/adb";
+import { Adb, AdbFrameBuffer, AdbFrameBufferV1, AdbFrameBufferV2, AdbFrameBufferForbiddenError, AdbFrameBufferUnsupportedVersionError } from "@yume-chan/adb";
 import { BufferedReadableStream } from "@yume-chan/stream-extra";
+import { readBlob, readFile, uploadFile, FileService, refreshFiles, previousFile, nextFile } from "./file-service"
+import { STATE } from "../components/scrcpy/state";
 
 import getConfig from "next/config";
 let StreamSaver: typeof import("@yume-chan/stream-saver");
@@ -72,23 +75,24 @@ class AndroidElement {
 }
 
 class LabelerPanelState {
-   
     contextMenuTarget: MouseEvent | undefined = undefined;
     imageData: ImageData | undefined = undefined;
     width = 0;
     height = 0;
     thought = "";
+    xmlDocStr = "";
     elements: AndroidElement[] = [];
-    xmltexts=""
-    task=""
-    observation=""
-    
-    coordX1="";
-    coordY1="";
-    coordX2="";
-    coordY2="";
-    inputText="";
-    commandType="";
+    xmltexts = ""
+    task = ""
+    observation = ""
+
+    coordX1 = "";
+    coordY1 = "";
+    coordX2 = "";
+    coordY2 = "";
+    inputText = "";
+    commandType = "";
+    commandTypeName = "";
 
     setImage(image: AdbFrameBuffer) {
         this.width = image.width;
@@ -99,12 +103,52 @@ class LabelerPanelState {
             image.height
         );
     }
-
     constructor() {
         makeAutoObservable(this);
     }
 
+    // Method to convert state to JSON
+    toJSON(): string {
+        return JSON.stringify({
+            width: this.width,
+            height: this.height,
+            thought: this.thought,
+            xmlDocStr: this.xmlDocStr,
+            xmltexts: this.xmltexts,
+            task: this.task,
+            observation: this.observation,
+            coordX1: this.coordX1,
+            coordY1: this.coordY1,
+            coordX2: this.coordX2,
+            coordY2: this.coordY2,
+            inputText: this.inputText,
+            commandType: this.commandType,
+            commandTypeName: this.commandTypeName,
+        });
+    }
 
+    // Method to parse JSON and assign values to properties
+    fromJSON(data: object) {
+        try {
+            // const data = JSON.parse(json);
+            this.width = data.width;
+            this.height = data.height;
+            this.thought = data.thought;
+            this.elements = data.elements;
+            this.xmltexts = data.xmltexts;
+            this.task = data.task;
+            this.observation = data.observation;
+            this.coordX1 = data.coordX1;
+            this.coordY1 = data.coordY1;
+            this.coordX2 = data.coordX2;
+            this.coordY2 = data.coordY2;
+            this.inputText = data.inputText;
+            this.commandType = data.commandType;
+            this.commandTypeName = data.commandTypeName;
+        } catch (error) {
+            console.error('Error parsing JSON:', error);
+        }
+    }
 }
 
 export class AdbXmlFetchError extends Error {
@@ -115,18 +159,15 @@ export class AdbXmlFetchError extends Error {
 }
 
 
- function saveFile(fileName: string, size?: number | undefined) {
+function saveFile(fileName: string, size?: number | undefined) {
     return StreamSaver!.createWriteStream(fileName, {
         size,
     }) as unknown as WritableStream<Uint8Array>;
 }
 
 
-
-
-
 // Define ADB command types
-type AdbCommandType = 'tap' | 'text' | 'swipe' | 'keyevent' | 'start';
+type AdbCommandType = 'tap' | 'text' | 'swipe' | 'keyevent' | 'start' | 'finish';
 
 // Function to execute ADB command
 async function executeAdbCommand(command: string) {
@@ -134,7 +175,7 @@ async function executeAdbCommand(command: string) {
         if (!GLOBAL_STATE.adb) {
             throw new Error('ADB instance not available.');
         }
-        
+
         let stdout = await GLOBAL_STATE.adb.subprocess.spawnAndWaitLegacy(command.split(" "));
 
         let responseStr = stdout.trim();
@@ -151,9 +192,10 @@ async function executeAdbCommand(command: string) {
 
 // Define adb command mappings
 const adbCommands: Record<AdbCommandType, (params: any) => void> = {
-    
+
     'tap': ({ x, y }: { x: number; y: number }) => {
-        const command = `input tap ${ x} ${ y}`;
+        // const command = `input tap ${x} ${y}`;
+        const command = `app_process -Djava.class.path=/data/local/tmp/yadb /data/local/tmp com.ysbing.yadb.Main -touch ${x} ${y} 20`
         // const command = ` rm /data/local/tmp/yadb`;
         executeAdbCommand(command);
     },
@@ -165,7 +207,8 @@ const adbCommands: Record<AdbCommandType, (params: any) => void> = {
         executeAdbCommand(command);
     },
     'swipe': ({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) => {
-        const command = `input swipe ${ x1} ${ y1} ${ x2} ${ y2} 200`;
+        const command = `input swipe ${x1} ${y1} ${x2} ${y2} 200`;
+        // const command = `app_process -Djava.class.path=/data/local/tmp/yadb /data/local/tmp com.ysbing.yadb.Main -swipe ${x1} ${y1} ${x2} ${y2} 200`
         executeAdbCommand(command);
     },
     'keyevent': ({ keycode }: { keycode: number }) => {
@@ -175,6 +218,9 @@ const adbCommands: Record<AdbCommandType, (params: any) => void> = {
     'start': () => {
         const command = 'am start -a android.intent.action.MAIN -c android.intent.category.HOME';
         executeAdbCommand(command);
+    },
+    'finish': () => {
+
     },
 };
 
@@ -206,7 +252,7 @@ function traverseTreeAndExtractText(xmlDoc: Document, elemList: AndroidElement[]
     for (let i = 0; i < xpathResult.snapshotLength; i++) {
         const node = xpathResult.snapshotItem(i) as Element;
         const text = node.getAttribute('text');
-        
+
         // Skip elements with empty or null text
         if (!text) continue;
 
@@ -226,7 +272,7 @@ function traverseTreeAndExtractText(xmlDoc: Document, elemList: AndroidElement[]
         }
 
         elemList.push(new AndroidElement(elemId, [[x1, y1], [x2, y2]], text));
-        
+
     }
 }
 
@@ -271,21 +317,21 @@ function traverseTree(xmlDoc: Document, elemList: AndroidElement[], attrib: stri
 export async function getXmlViaSocket(adb: Adb, prefix: string, saveDir: string): Promise<string> {
     // const dumpCommand = `uiautomator dump /sdcard/${prefix}.xml`;
     const dumpCommand = `app_process -Djava.class.path=/data/local/tmp/yadb /data/local/tmp com.ysbing.yadb.Main -layout`;
-   
+
     try {
-        
+
         let stdout = await adb.subprocess.spawnAndWaitLegacy(dumpCommand.split(" "));
 
         let responseStr = stdout.trim();
         console.log(responseStr)
-        
+
         if (!responseStr.includes(`layout dumped to:/data/local/tmp/yadb_layout_dump.xml`)) {
             throw new AdbXmlFetchError("Failed to dump UI hierarchy.");
         }
         // if (!responseStr.includes(`UI hierchary dumped to: /sdcard/${prefix}.xml`)) {
         //     throw new AdbXmlFetchError("Failed to dump UI hierarchy.");
         // }
-        
+
     } catch (error) {
         if (error instanceof Error) {
             throw new AdbXmlFetchError(error.message);
@@ -294,12 +340,12 @@ export async function getXmlViaSocket(adb: Adb, prefix: string, saveDir: string)
         }
     }
     const sync = await adb!.sync();
-    
+
     try {
         // const readable = await sync.read(`/sdcard/${prefix}.xml`);
         const readable = await sync.read(`/data/local/tmp/yadb_layout_dump.xml`);
         // @ts-ignore ReadableStream definitions are slightly incompatiblereadable
-        
+
         // Convert ReadableStream to Blob
         const response = new Response(readable);
         const blob = await response.blob();
@@ -307,13 +353,13 @@ export async function getXmlViaSocket(adb: Adb, prefix: string, saveDir: string)
         // Convert Blob to string
         const text = await blob.text();
         return text
-        
+
 
     } finally {
         sync.dispose();
     }
     return ""
-    
+
 }
 
 const state = new LabelerPanelState();
@@ -325,6 +371,7 @@ export interface LabelerPanelProps {
 export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const mouseisdown = useRef<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
 
     const capture = useCallback(async () => {
         if (!GLOBAL_STATE.adb) {
@@ -349,6 +396,9 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         } catch (e: any) {
             GLOBAL_STATE.showErrorDialog(e);
         }
+        const dateStr = formatDate();
+        const imageFileName = `${dateStr}_${GLOBAL_STATE.adb?.banner.model}.png`;
+        STATE.currentFile = imageFileName;
     }, []);
     const replayAction = useCallback(async () => {
         if (!GLOBAL_STATE.adb) {
@@ -356,7 +406,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         }
 
         try {
-            switch(state.commandType){
+            switch (state.commandType) {
                 case "tap":
                     handleAdbCommand('tap', { x: state.coordX1, y: state.coordY1 });
                     break;
@@ -374,16 +424,14 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                     handleAdbCommand('start', {});
                     break;
             }
-        
 
-            
         } catch (e: any) {
             GLOBAL_STATE.showErrorDialog(e);
         }
     }, []);
-    
 
-    function drawBboxMulti( elemList: AndroidElement[], recordMode = false, darkMode = false): void {
+
+    function drawBboxMulti(elemList: AndroidElement[], recordMode = false, darkMode = false): void {
         elemList.forEach((elem, index) => {
             try {
                 const topLeft = elem.bbox[0];
@@ -409,7 +457,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                 const canvas = canvasRef.current;
                 if (canvas && state.imageData) {
                     const ctx = canvas.getContext('2d');
-                    if (ctx){
+                    if (ctx) {
                         // Draw rectangle
                         ctx.strokeStyle = color;
                         ctx.lineWidth = 2;
@@ -425,10 +473,10 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                 }
 
             } catch (e) {
-                console.error("ERROR: An exception occurs while labeling the image\n", e);
+                setError("ERROR: An exception occurs while labeling the image\n" + e);
             }
         });
-        
+
     }
     const capturexml = useCallback(async () => {
         if (!GLOBAL_STATE.adb) {
@@ -446,15 +494,15 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
 
             // Do something with the XML document
             console.log(xmlDoc);
-            
+
             const clickable_list: AndroidElement[] = [];
             const focusable_list: AndroidElement[] = [];
             const text_list: AndroidElement[] = [];
-            
+
             traverseTree(xmlDoc, clickable_list, 'clickable', true);
             traverseTree(xmlDoc, focusable_list, 'focusable', true);
             traverseTreeAndExtractText(xmlDoc, text_list, true);
-            
+
 
             let all_text = 'view文字:\n'; // Clear previous content
 
@@ -463,16 +511,16 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                 const y1 = elem.bbox[0][1];
                 const x2 = elem.bbox[1][0];
                 const y2 = elem.bbox[1][1];
-            
+
                 const cx = (x1 + x2) / 2;
                 const cy = (y1 + y2) / 2;
                 const w = x2 - x1;
                 const h = y2 - y1;
-            
+
                 const bboxStr = `(${cx.toFixed(0)},${cy.toFixed(0)}) [${w.toFixed(0)},${h.toFixed(0)}]`;
                 all_text += `${bboxStr}:${elem.attrib}\n`;
             });
-            
+
             all_text += "view按钮:\n";
             const elemList: AndroidElement[] = [...clickable_list];
 
@@ -501,72 +549,74 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                 const y1 = elem.bbox[0][1];
                 const x2 = elem.bbox[1][0];
                 const y2 = elem.bbox[1][1];
-            
+
                 const cx = (x1 + x2) / 2;
                 const cy = (y1 + y2) / 2;
                 const w = x2 - x1;
                 const h = y2 - y1;
-            
+
                 const bboxStr = `(${cx.toFixed(0)},${cy.toFixed(0)}) [${w.toFixed(0)},${h.toFixed(0)}]`;
                 all_text += `${bboxStr}:${elem.id}:${elem.attrib}\n`;
             });
             runInAction(() => {
-            state.xmltexts=all_text;
-            state.elements=elemList;
+                state.xmlDocStr = xmltext;
+                state.xmltexts = all_text;
+                state.elements = elemList;
             });
-            drawBboxMulti( elemList,   false,   false)
-            
+            drawBboxMulti(elemList, false, false)
+
         } catch (e: any) {
             GLOBAL_STATE.showErrorDialog(e);
         }
+        // STATE.currentFile = "";
     }, []);
 
 
     useEffect(() => {
         const canvas = canvasRef.current;
         const handleCanvasMousedown = (event: MouseEvent) => {
-            if(canvas){
+            if (canvas) {
                 const rect = canvas.getBoundingClientRect();
-                const x = state.width*(event.clientX - rect.left)/rect.width;
-                const y = state.height*(event.clientY - rect.top)/rect.height;
+                const x = state.width * (event.clientX - rect.left) / rect.width;
+                const y = state.height * (event.clientY - rect.top) / rect.height;
                 runInAction(() => {
-                state.coordX1 = `${x.toFixed(0)}`;
-                state.coordY1 = `${y.toFixed(0)}`;
+                    state.coordX1 = `${x.toFixed(0)}`;
+                    state.coordY1 = `${y.toFixed(0)}`;
                 });
             }
-            mouseisdown.current=true;
+            mouseisdown.current = true;
         };
         const handleCanvasMouseup = (event: MouseEvent) => {
-            if(canvas){
+            if (canvas) {
                 const rect = canvas.getBoundingClientRect();
-                const x = state.width*(event.clientX - rect.left)/rect.width;
-                const y = state.height*(event.clientY - rect.top)/rect.height;
+                const x = state.width * (event.clientX - rect.left) / rect.width;
+                const y = state.height * (event.clientY - rect.top) / rect.height;
                 runInAction(() => {
-                state.coordX2 = `${x.toFixed(0)}`;
-                state.coordY2 = `${y.toFixed(0)}`;
+                    state.coordX2 = `${x.toFixed(0)}`;
+                    state.coordY2 = `${y.toFixed(0)}`;
                 });
             }
-            mouseisdown.current=false;
+            mouseisdown.current = false;
         };
         const handleCanvasMousemove = (event: MouseEvent) => {
-            if(canvas && mouseisdown.current){
+            if (canvas && mouseisdown.current) {
                 const rect = canvas.getBoundingClientRect();
-                const x = state.width*(event.clientX - rect.left)/rect.width;
-                const y = state.height*(event.clientY - rect.top)/rect.height;
+                const x = state.width * (event.clientX - rect.left) / rect.width;
+                const y = state.height * (event.clientY - rect.top) / rect.height;
                 runInAction(() => {
-                state.coordX2 = `${x.toFixed(0)}`;
-                state.coordY2 = `${y.toFixed(0)}`;
+                    state.coordX2 = `${x.toFixed(0)}`;
+                    state.coordY2 = `${y.toFixed(0)}`;
                 });
             }
         };
-        if(canvas){
+        if (canvas) {
             canvas.addEventListener("mousedown", handleCanvasMousedown);
             canvas.addEventListener("mouseup", handleCanvasMouseup);
             canvas.addEventListener("mousemove", handleCanvasMousemove);
         }
-        
+
         return autorun(() => {
-            
+
             const canvas = canvasRef.current;
             if (canvas && state.imageData) {
                 canvas.width = state.width;
@@ -580,12 +630,12 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
 
     const drawCoordinates = () => {
         const canvas = canvasRef.current;
-        if(canvas){
+        if (canvas) {
             const context = canvas.getContext('2d');
-            if(context){
-            // context.clearRect(0, 0, canvas.width, canvas.height);
-    
-            const { coordX1, coordY1, coordX2, coordY2 } = state;
+            if (context) {
+                // context.clearRect(0, 0, canvas.width, canvas.height);
+
+                const { coordX1, coordY1, coordX2, coordY2 } = state;
                 if (coordX1 && coordY1 && coordX2 && coordY2) {
                     const icoordX1 = parseInt(coordX1);
                     const icoordY1 = parseInt(coordY1);
@@ -596,13 +646,13 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                     context.beginPath();
                     context.arc(icoordX1, icoordY1, 20, 0, 2 * Math.PI);
                     context.fill();
-        
+
                     // Draw second point in blue
                     context.fillStyle = 'blue';
                     context.beginPath();
                     context.arc(icoordX2, icoordY2, 20, 0, 2 * Math.PI);
                     context.fill();
-        
+
                     // Draw line connecting points in green
                     context.strokeStyle = 'green';
                     context.lineWidth = 10;
@@ -613,7 +663,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                 }
             }
         }
-        
+
     };
 
     const commandBarItems = computed(() => [
@@ -622,7 +672,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
             disabled: !GLOBAL_STATE.adb,
             iconProps: {
                 iconName: Icons.Camera,
-                style: { height: 20, fontSize: 20, lineHeight: 1.5 },
+                style: { height: 10, fontSize: 10, lineHeight: 1.0 },
             },
             text: "截图",
             onClick: capture,
@@ -632,7 +682,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
             disabled: !GLOBAL_STATE.adb,
             iconProps: {
                 iconName: Icons.Camera,
-                style: { height: 20, fontSize: 20, lineHeight: 1.5 },
+                style: { height: 10, fontSize: 10, lineHeight: 1.0 },
             },
             text: "xml",
             onClick: capturexml,
@@ -641,47 +691,310 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
             key: "replay",
             disabled: !GLOBAL_STATE.adb,
             iconProps: {
-                iconName: Icons.ArrowClockwise,
-                style: { height: 20, fontSize: 20, lineHeight: 1.5 },
+                iconName: Icons.Play,
+                style: { height: 10, fontSize: 10, lineHeight: 1.0 },
             },
             text: "回放",
             onClick: replayAction,
         },
         {
-            key: "Save",
-            disabled: !state.imageData,
+            key: 'previousFile',
+            iconProps: {
+                iconName: Icons.ChevronUp,
+                style: { height: 10, fontSize: 10, lineHeight: 1.0 },
+            },
+            text: "上一张",
+            onClick: async () => {
+                try {
+                    await previousFile(STATE.currentFile);
+                    const imgblob = await readBlob(STATE.currentFile);
+                    const newFileName = STATE.currentFile.replace(/\.[^/.]+$/, ".json");
+                    const jsondata = await readFile(newFileName);
+                    state.fromJSON(jsondata);
+
+                    // 将Blob对象转换为URL
+                    const imageUrlBlob = URL.createObjectURL(imgblob);
+
+                    // 创建一个Image对象
+                    const img = new Image();
+                    img.onload = function () {
+                        const canvas = canvasRef.current;
+                        if (!canvas) {
+                            return;
+                        }
+                        const context = canvas.getContext('2d');
+
+                        // 设置canvas的宽度和高度为图片的宽度和高度
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+
+                        if (!context) {
+                            return;
+                        }
+                        // 将图像绘制到Canvas上
+                        context.drawImage(img, 0, 0);
+                        state.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                        state.width = img.width;
+                        state.height = img.height;
+
+                    };
+
+                    // 设置Image的src属性为Blob URL
+                    img.src = imageUrlBlob;
+                } catch (error) {
+                    setError('Error downloading file:' + error);
+                }
+                refreshFiles();
+            },
+        },
+        {
+            key: 'nextFile',
+            iconProps: {
+                iconName: Icons.ChevronDown,
+                style: { height: 10, fontSize: 10, lineHeight: 1.0 },
+            },
+            text: "下一张",
+            onClick: async () => {
+                try {
+                    await nextFile(STATE.currentFile);
+                    const imgblob = await readBlob(STATE.currentFile);
+                    const newFileName = STATE.currentFile.replace(/\.[^/.]+$/, ".json");
+                    const jsondata = await readFile(newFileName);
+                    state.fromJSON(jsondata);
+
+                    // 将Blob对象转换为URL
+                    const imageUrlBlob = URL.createObjectURL(imgblob);
+
+                    // 创建一个Image对象
+                    const img = new Image();
+                    img.onload = function () {
+                        const canvas = canvasRef.current;
+                        if (!canvas) {
+                            return;
+                        }
+                        const context = canvas.getContext('2d');
+
+                        // 设置canvas的宽度和高度为图片的宽度和高度
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+
+                        if (!context) {
+                            return;
+                        }
+                        // 将图像绘制到Canvas上
+                        context.drawImage(img, 0, 0);
+                        state.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                        state.width = img.width;
+                        state.height = img.height;
+
+                    };
+
+                    // 设置Image的src属性为Blob URL
+                    img.src = imageUrlBlob;
+                } catch (error) {
+                    setError('Error downloading file:' + error);
+                }
+                refreshFiles();
+            },
+        },
+
+    ]);
+
+    const formatDate = () => {
+        const date = new Date();
+
+        // 获取UTC时间的时间戳，单位为毫秒
+        const utcTime = date.getTime() + (date.getTimezoneOffset() * 60000);
+
+        // 北京时间比UTC早8个小时，偏移量为8小时
+        const beijingTime = new Date(utcTime + 8 * 3600000);
+
+        const year = beijingTime.getFullYear();
+        const month = String(beijingTime.getMonth() + 1).padStart(2, '0');
+        const day = String(beijingTime.getDate()).padStart(2, '0');
+        const hours = String(beijingTime.getHours()).padStart(2, '0');
+        const minutes = String(beijingTime.getMinutes()).padStart(2, '0');
+        const seconds = String(beijingTime.getSeconds()).padStart(2, '0');
+
+        return `${year}${month}${day}_${hours}${minutes}${seconds}`;
+    };
+
+    console.log(formatDate()); // 输出类似于：20240617_144530
+
+
+    async function decodeImage(arrayBuffer: ArrayBuffer): Promise<HTMLImageElement> {
+        return new Promise<HTMLImageElement>((resolve, reject) => {
+            const blob = new Blob([arrayBuffer]);
+            const imageUrl = URL.createObjectURL(blob);
+            const img = new Image();
+
+            img.onload = () => {
+                URL.revokeObjectURL(imageUrl);
+                resolve(img);
+            };
+
+            img.onerror = (error) => {
+                URL.revokeObjectURL(imageUrl);
+                reject(error);
+            };
+
+            img.src = imageUrl;
+        });
+    }
+
+    // Function to convert ImageData to Blob
+    function imageDataToBlob(imageData: ImageData): Promise<Blob> {
+        return new Promise((resolve) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = imageData.width;
+            canvas.height = imageData.height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.putImageData(imageData, 0, 0);
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                    }
+                }, 'image/png');
+            }
+        });
+    }
+
+
+    const commandBarItems2 = computed(() => [
+        {
+            key: 'Save',
+            disabled: !state.imageData || STATE.currentFile == "",
             iconProps: {
                 iconName: Icons.Save,
-                style: { height: 20, fontSize: 20, lineHeight: 1.5 },
+                style: { height: 10, fontSize: 10, lineHeight: 1.0 },
             },
-            text: "保存",
-            onClick: () => {
+            text: '保存',
+            onClick: async () => {
+                // const dateStr = formatDate();
+                // const imageFileName = `${dateStr}.png`;
+                // const jsonFileName = `${dateStr}.json`;
+
+                const baseName = STATE.currentFile.split('.').slice(0, -1).join('.'); // 没有后缀的文件名
+                const imageFileName = STATE.currentFile;
+                const jsonFileName = `${baseName}.json`;
+                if (state.imageData) {
+                    imageDataToBlob(state.imageData).then((blob) => {
+                        const file = new File([blob], imageFileName, {
+                            type: 'image/png',
+                        });
+                        // Now you have a File object created from the state.imageData
+                        console.log(file);
+                        try {
+                            const result = uploadFile(file);
+                            console.log('File uploaded successfully:', result);
+                        } catch (error) {
+                            setError('Error uploading file:' + error);
+                        }
+
+                        // Convert state to JSON
+                        const jsonContent = state.toJSON();
+
+                        // Upload a JSON file
+                        const file2 = new File([jsonContent], jsonFileName, { type: 'application/json' });
+                        try {
+                            const uploadResponse = uploadFile(file2);
+                            console.log('File uploaded successfully:', uploadResponse);
+                        } catch (error) {
+                            setError('Failed to upload file:' + error);
+                        }
+                    });
+                }
                 const canvas = canvasRef.current;
                 if (!canvas) {
                     return;
                 }
+                setTimeout(() => {
+                    refreshFiles();
+                }, 1000); // 1 second delay (adjust as needed)
+            },
+        },
+        {
+            key: 'Load',
+            disabled: !STATE.currentFile,
+            iconProps: {
+                iconName: Icons.ArrowClockwise,
+                style: { height: 10, fontSize: 10, lineHeight: 1.0 },
+            },
+            text: `${STATE.currentFile}`,
+            onClick: async () => {
+                try {
+                    const imgblob = await readBlob(STATE.currentFile);
+                    const newFileName = STATE.currentFile.replace(/\.[^/.]+$/, ".json");
+                    const jsondata = await readFile(newFileName);
+                    state.fromJSON(jsondata);
 
-                const url = canvas.toDataURL();
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `Screenshot of ${GLOBAL_STATE.device!.name}.png`;
-                a.click();
+                    // 将Blob对象转换为URL
+                    const imageUrlBlob = URL.createObjectURL(imgblob);
+
+                    // 创建一个Image对象
+                    const img = new Image();
+                    img.onload = function () {
+                        const canvas = canvasRef.current;
+                        if (!canvas) {
+                            return;
+                        }
+                        const context = canvas.getContext('2d');
+
+                        // 设置canvas的宽度和高度为图片的宽度和高度
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+
+                        if (!context) {
+                            return;
+                        }
+                        // 将图像绘制到Canvas上
+                        context.drawImage(img, 0, 0);
+                        state.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                        state.width = img.width;
+                        state.height = img.height;
+
+                    };
+
+                    // 设置Image的src属性为Blob URL
+                    img.src = imageUrlBlob;
+                } catch (error) {
+                    setError('Error downloading file:' + error);
+                }
+                refreshFiles();
             },
         },
     ]);
-
-
-
 
     // Function to handle ADB command execution
     const handleAdbCommand = useCallback((commandType: AdbCommandType, params: any) => {
         if (adbCommands.hasOwnProperty(commandType)) {
             adbCommands[commandType](params);
             runInAction(() => {
-            state.commandType = commandType;
+                state.commandType = commandType;
+                switch (state.commandType) {
+                    case "tap":
+                        state.commandTypeName = "点击";
+                        break;
+                    case "text":
+                        state.commandTypeName = "输入";
+                        break;
+                    case "swipe":
+                        state.commandTypeName = "滑动";
+                        break;
+                    case "keyevent":
+                        state.commandTypeName = "返回";
+                        break;
+                    case "start":
+                        state.commandTypeName = "HOME";
+                        break;
+                    case "finish":
+                        state.commandTypeName = "完成";
+                        break;
+                }
             });
         } else {
-            console.error(`Unknown ADB command type: ${commandType}`);
+            setError(`Unknown ADB command type: ${commandType}`);
         }
     }, []);
 
@@ -712,6 +1025,11 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         handleAdbCommand('start', {});
     }, [handleAdbCommand]);
 
+
+    const handleFinishEvent = useCallback(() => {
+        handleAdbCommand('finish', {});
+    }, [handleAdbCommand]);
+
     const handleCoordChange = (event: any, newValue?: string) => {
         // 正则表达式验证输入是否为整数
         const regex = /^[0-9]*$/;
@@ -722,35 +1040,37 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
     };
 
     return (
-     
-        <Stack  {...RouteStackProps  } style={{ padding: 0 }}>
 
-            
+        <Stack  {...RouteStackProps} style={{ padding: 0 }}>
             <Stack horizontal grow styles={{ root: { height: 0 } }}>
 
                 <DeviceView width={state.width} height={state.height}>
                     <canvas ref={canvasRef} style={{ display: "block" }} />
                 </DeviceView>
-                
+
                 <Stack tokens={{ childrenGap: 2 }} style={{ padding: 2 }}>
                     <CommandBar
                         items={commandBarItems.get()}
                     />
-                     <TextField
+                    <CommandBar
+                        items={commandBarItems2.get()}
+                    />
+
+                    <TextField
                         label="界面文字:"
                         multiline
-                        rows={6} // Adjust rows as needed
+                        rows={7} // Adjust rows as needed
                         value={state.xmltexts}
                         onChange={(e, newValue) => state.xmltexts = newValue || ""}
                     />
                     <TextField
                         label="任务："
                         multiline
-                        rows={2}
+                        rows={3}
                         value={state.task}
                         onChange={(e, newValue) => state.task = newValue || ""}
                     />
-                    <Stack horizontal tokens={{ childrenGap: 2 }} style={{flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Stack horizontal tokens={{ childrenGap: 2 }} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                         <TextField
                             label="观察："
                             multiline
@@ -765,24 +1085,35 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                             rows={3}
                             styles={{ root: { flex: 1 } }}
                             value={state.thought}
-                            onChange={(e, newValue) => state.thought =newValue || ""}
+                            onChange={(e, newValue) => state.thought = newValue || ""}
                         />
                     </Stack>
                     <Stack horizontal tokens={{ childrenGap: 2 }}>
-                        <DefaultButton text="点击" onClick={handleTap} />
-                        <DefaultButton text="滑动" onClick={handleSwipe} />
-                        <DefaultButton text="输入" onClick={handleTypeText} />
+                        <DefaultButton text="点击" onClick={handleTap} styles={{ root: { minWidth: 50 } }} />
+                        <DefaultButton text="滑动" onClick={handleSwipe} styles={{ root: { minWidth: 50 } }} />
+                        <DefaultButton text="输入" onClick={handleTypeText} styles={{ root: { minWidth: 50 } }} />
 
-                        <DefaultButton text="返回" onClick={handleKeyEvent} />
-                        <DefaultButton text="Home" onClick={handleStartMainActivity} />
+                        <DefaultButton text="返回" onClick={handleKeyEvent} styles={{ root: { minWidth: 50 } }} />
+                        <DefaultButton text="Home" onClick={handleStartMainActivity} styles={{ root: { minWidth: 50 } }} />
+                        <DefaultButton text="完成" onClick={handleFinishEvent} styles={{ root: { minWidth: 50 } }} />
                     </Stack>
-                    <TextField
-                        label="操作"
-                        name="操作"
-                        value={state.commandType}
-                        disabled
+                    <Stack horizontal tokens={{ childrenGap: 2 }}>
+                        <TextField
+                            label="操作"
+                            name="操作"
+                            styles={{ root: { width: 100 } }}
+                            value={state.commandTypeName}
+                            disabled
                         // onChange={(e, newValue) => state.inputText = newValue || ""}
-                    />
+                        />
+                        <TextField
+                            label="输入"
+                            name="输入"
+                            styles={{ root: { flex: 1 } }}
+                            value={state.inputText}
+                            onChange={(e, newValue) => runInAction(() => { state.inputText = newValue || "" })}
+                        />
+                    </Stack>
                     <Stack horizontal tokens={{ childrenGap: 2 }}>
                         <TextField
                             label="X1"
@@ -813,15 +1144,22 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                             styles={{ root: { width: 100 } }}
                         />
                     </Stack>
-                    <TextField
-                        label="输入"
-                        name="输入"
-                        value={state.inputText}
-                        onChange={(e, newValue) => runInAction(() => {state.inputText = newValue || ""})}
-                    />
-                    
-                </Stack> 
+                    {
+                        error && (
+                            <Dialog
+                                hidden={false}
+                                onDismiss={() => setError(null)}
+                                dialogContentProps={{
+                                    title: 'Error',
+                                    subText: error,
+                                }}
+                            />
+                        )
+                    }
+
+                </Stack>
             </Stack>
         </Stack>
+
     );
 });

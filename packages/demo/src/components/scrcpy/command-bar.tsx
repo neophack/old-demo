@@ -261,13 +261,24 @@ const ITEMS = computed(() => {
         },
         {
             key: "Labeler",
-            iconProps: { iconName: Icons.Document20 },
+            iconProps: { iconName: Icons.CloudArrowDown },
             canCheck: true,
             checked: STATE.labelerVisible,
             text: "Labeler",
             iconOnly: true,
             onClick: action(() => {
                 STATE.labelerVisible = !STATE.labelerVisible;
+            }),
+        },
+        {
+            key: "List",
+            iconProps: { iconName: Icons.Document },
+            canCheck: true,
+            checked: STATE.listVisible,
+            text: "List",
+            iconOnly: true,
+            onClick: action(() => {
+                STATE.listVisible = !STATE.listVisible;
             }),
         },
         {

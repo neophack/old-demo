@@ -28,6 +28,7 @@ import {
 import { useLocalStorage } from "../hooks";
 import { GLOBAL_STATE } from "../state";
 import { CommonStackTokens, RouteStackProps, formatSpeed } from "../utils";
+import {FileService} from "../components/file-service"
 
 const useClasses = makeStyles({
     layerHost: {
@@ -275,6 +276,20 @@ const Scrcpy: NextPage = () => {
                                         : "none",
                                 }}
                             />
+                        </div>
+                        <div
+                            style={{
+                                padding: 2,
+                                overflow: "hidden auto",
+                                display: STATE.listVisible ? "block" : "none",
+                                width: 200,
+                                fontFamily: "monospace",
+                                overflowY: "auto",
+                                whiteSpace: "pre-wrap",
+                                wordWrap: "break-word",
+                            }}
+                        >
+                            <FileService></FileService>
                         </div>
                         <div
                             style={{
