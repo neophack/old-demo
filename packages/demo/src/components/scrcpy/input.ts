@@ -201,9 +201,9 @@ export class AoaKeyboardInjector implements KeyboardInjector {
         }
         // console.log("aoadown",key);
         this.hidKeyboard.down(keyCode);
-        const metaState = 0;
-        const repeat = 0;
-        STATE.recordedActions.push({ type: 'keydown', key, metaState,repeat });
+        // const metaState = 0;
+        // const repeat = 0;
+        // STATE.recordedActions.push({ type: 'keydown', key, metaState,repeat });
         await this.aoaKeyboard.sendInputReport(
             this.hidKeyboard.serializeInputReport()
         );
@@ -217,9 +217,9 @@ export class AoaKeyboardInjector implements KeyboardInjector {
 
         this.hidKeyboard.up(keyCode);
 
-        const metaState = 0;
-        const repeat = 0;
-        STATE.recordedActions.push({ type: 'keyup', key, metaState,repeat });
+        // const metaState = 0;
+        // const repeat = 0;
+        // STATE.recordedActions.push({ type: 'keyup', key, metaState,repeat });
         await this.aoaKeyboard.sendInputReport(
             this.hidKeyboard.serializeInputReport()
         );

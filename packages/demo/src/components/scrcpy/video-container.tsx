@@ -34,7 +34,7 @@ function handleWheel(e: WheelEvent) {
         scrollX: -e.deltaX / 100,
         scrollY: -e.deltaY / 100,
     };
-    STATE.recordedActions.push(action);
+    // STATE.recordedActions.push(action);
     STATE.client!.controlMessageWriter!.injectScroll({
         screenWidth: STATE.client!.screenWidth!,
         screenHeight: STATE.client!.screenHeight!,
@@ -112,7 +112,7 @@ function handlePointerDown(e: PointerEvent<HTMLDivElement>) {
         buttons: e.buttons,
         button: e.button,
     };
-    STATE.recordedActions.push(action);
+    // STATE.recordedActions.push(action);
     injectTouch(AndroidMotionEventAction.Down, e);
 }
 
@@ -133,7 +133,7 @@ function handlePointerMove(e: PointerEvent<HTMLDivElement>) {
         buttons: e.buttons,
         button: e.button,
     };
-    STATE.recordedActions.push(action);
+    // STATE.recordedActions.push(action);
     injectTouch(
         e.buttons === 0
             ? AndroidMotionEventAction.HoverMove
@@ -159,7 +159,7 @@ function handlePointerUp(e: PointerEvent<HTMLDivElement>) {
         buttons: e.buttons,
         button: e.button,
     };
-    STATE.recordedActions.push(action);
+    // STATE.recordedActions.push(action);
     injectTouch(AndroidMotionEventAction.Up, e);
 }
 
@@ -220,11 +220,9 @@ export function VideoContainer() {
             style={{
                 width: STATE.width,
                 height: STATE.height,
-                transform: `translate(${
-                    (STATE.rotatedWidth - STATE.width) / 2
-                }px, ${(STATE.rotatedHeight - STATE.height) / 2}px) rotate(${
-                    STATE.rotation * 90
-                }deg)`,
+                transform: `translate(${(STATE.rotatedWidth - STATE.width) / 2
+                    }px, ${(STATE.rotatedHeight - STATE.height) / 2}px) rotate(${STATE.rotation * 90
+                    }deg)`,
             }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}

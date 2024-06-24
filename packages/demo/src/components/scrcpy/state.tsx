@@ -3,44 +3,44 @@ import { AdbDaemonWebUsbDevice } from "@yume-chan/adb-daemon-webusb";
 import { AdbScrcpyClient, AdbScrcpyOptionsLatest } from "@yume-chan/adb-scrcpy";
 import { VERSION } from "@yume-chan/fetch-scrcpy-server";
 import {
-  Float32PcmPlayer,
-  Float32PlanerPcmPlayer,
-  Int16PcmPlayer,
-  PcmPlayer,
+    Float32PcmPlayer,
+    Float32PlanerPcmPlayer,
+    Int16PcmPlayer,
+    PcmPlayer,
 } from "@yume-chan/pcm-player";
 import {
-  AndroidScreenPowerMode,
-  CodecOptions,
-  DEFAULT_SERVER_PATH,
-  ScrcpyAudioCodec,
-  ScrcpyDeviceMessageType,
-  ScrcpyHoverHelper,
-  ScrcpyInstanceId,
-  ScrcpyLogLevel,
-  ScrcpyMediaStreamPacket,
-  ScrcpyOptionsLatest,
-  ScrcpyVideoCodecId,
-  clamp,
-  h264ParseConfiguration,
-  h265ParseConfiguration,
+    AndroidScreenPowerMode,
+    CodecOptions,
+    DEFAULT_SERVER_PATH,
+    ScrcpyAudioCodec,
+    ScrcpyDeviceMessageType,
+    ScrcpyHoverHelper,
+    ScrcpyInstanceId,
+    ScrcpyLogLevel,
+    ScrcpyMediaStreamPacket,
+    ScrcpyOptionsLatest,
+    ScrcpyVideoCodecId,
+    clamp,
+    h264ParseConfiguration,
+    h265ParseConfiguration,
 } from "@yume-chan/scrcpy";
 import { ScrcpyVideoDecoder } from "@yume-chan/scrcpy-decoder-tinyh264";
 import {
-  Consumable,
-  DistributionStream,
-  InspectStream,
-  ReadableStream,
-  WritableStream,
+    Consumable,
+    DistributionStream,
+    InspectStream,
+    ReadableStream,
+    WritableStream,
 } from "@yume-chan/stream-extra";
 import { action, autorun, makeAutoObservable, runInAction } from "mobx";
 import { GLOBAL_STATE } from "../../state";
 import { ProgressStream } from "../../utils";
 import { AacDecodeStream, OpusDecodeStream } from "./audio-decode-stream";
-import { fetchServer,fetchServer2 } from "./fetch-server";
+import { fetchServer, fetchServer2 } from "./fetch-server";
 import {
-  AoaKeyboardInjector,
-  KeyboardInjector,
-  ScrcpyKeyboardInjector,
+    AoaKeyboardInjector,
+    KeyboardInjector,
+    ScrcpyKeyboardInjector,
 } from "./input";
 import { MatroskaMuxingRecorder, RECORD_STATE } from "./recorder";
 import { SCRCPY_SETTINGS_FILENAME, SETTING_STATE } from "./settings";
@@ -89,8 +89,8 @@ export class ScrcpyPageState {
     labelerVisible = true;
     labeler: string[] = [];
 
-    recordedActions:RecordedAction[] = [];
-    
+    recordedActions: RecordedAction[] = [];
+
     demoModeVisible = false;
     navigationBarVisible = true;
 
@@ -124,7 +124,7 @@ export class ScrcpyPageState {
     }
     async pushServer2() {
         const serverBuffer = await fetchServer2();
-        await AdbScrcpyClient.pushServer2(
+        await AdbScrcpyClient.pushServer(
             GLOBAL_STATE.adb!,
             new ReadableStream<Consumable<Uint8Array>>({
                 start(controller) {
@@ -326,7 +326,7 @@ export class ScrcpyPageState {
                                 }),
                             ),
                         ),
-                        "/data/local/tmp/yadb"
+                    "/data/local/tmp/yadb"
                 );
 
                 runInAction(() => {
@@ -348,7 +348,7 @@ export class ScrcpyPageState {
             if (!SETTING_STATE.clientSettings.ignoreDecoderCodecArgs) {
                 const capability =
                     decoderDefinition.Constructor.capabilities[
-                        SETTING_STATE.settings.videoCodec!
+                    SETTING_STATE.settings.videoCodec!
                     ];
                 if (capability) {
                     videoCodecOptions.value.profile = capability.maxProfile;
@@ -399,6 +399,7 @@ export class ScrcpyPageState {
             );
 
             const sync = await GLOBAL_STATE.adb!.sync();
+            console.log("SCRCPY_SETTINGS_FILENAME:", SCRCPY_SETTINGS_FILENAME)
             try {
                 await sync.write({
                     filename: SCRCPY_SETTINGS_FILENAME,
@@ -458,11 +459,9 @@ export class ScrcpyPageState {
                             const deltaSkipped =
                                 decoder.frameSkipped - lastFrameSkipped;
                             // prettier-ignore
-                            this.fps = `${
-                            deltaRendered
-                        }${
-                            deltaSkipped ? `+${deltaSkipped} skipped` : ""
-                        }`;
+                            this.fps = `${deltaRendered
+                                }${deltaSkipped ? `+${deltaSkipped} skipped` : ""
+                                }`;
                             lastFrameRendered = decoder.frameRendered;
                             lastFrameSkipped = decoder.frameSkipped;
                         }),
@@ -541,8 +540,7 @@ export class ScrcpyPageState {
                         break;
                     default:
                         throw new Error(
-                            `Unexpected audio metadata type ${
-                                metadata["type"] as unknown as string
+                            `Unexpected audio metadata type ${metadata["type"] as unknown as string
                             }`,
                         );
                 }
@@ -561,7 +559,7 @@ export class ScrcpyPageState {
                                             chunk.data.buffer,
                                             chunk.data.byteOffset,
                                             chunk.data.byteLength /
-                                                Int16Array.BYTES_PER_ELEMENT,
+                                            Int16Array.BYTES_PER_ELEMENT,
                                         ),
                                     );
                                 },

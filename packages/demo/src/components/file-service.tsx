@@ -49,8 +49,13 @@ import {
 import { useConst } from "@fluentui/react-hooks";
 import { STATE } from "../components/scrcpy/state";
 import { observer } from "mobx-react-lite";
+import getConfig from "next/config";
 
-const API_URL = 'http://127.0.0.1:8080/api/files';
+// const API_URL = 'http://127.0.0.1:8080/api/files';
+const {
+    publicRuntimeConfig: { basePath, apiURL },
+} = getConfig();
+const API_URL = apiURL ?? '/api/files';
 
 interface FileItem {
     name: string;

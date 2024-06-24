@@ -13,6 +13,8 @@ const withBundleAnalyzer = require("@next/bundle-analyzer")({
 
 const basePath = process.env.BASE_PATH ?? "";
 
+const apiURL = process.env.API_URL;
+
 const withPwa = require("@yume-chan/next-pwa")({
     dest: "public",
 });
@@ -25,8 +27,9 @@ function pipe(value, ...callbacks) {
 }
 
 module.exports = pipe(
-    /** @type {import('next').NextConfig} */ ({
+    /** @type {import('next').NextConfig} */({
         basePath,
+        apiURL,
         pageExtensions: ["js", "jsx", "ts", "tsx", "md", "mdx"],
         reactStrictMode: false,
         productionBrowserSourceMaps: true,
@@ -36,6 +39,7 @@ module.exports = pipe(
         },
         publicRuntimeConfig: {
             basePath,
+            apiURL,
         },
         webpack(config) {
             config.module.rules.push({

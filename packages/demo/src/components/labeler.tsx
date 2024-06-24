@@ -85,6 +85,7 @@ class LabelerPanelState {
     xmltexts = ""
     task = ""
     observation = ""
+    currentFocus = ""
 
     coordX1 = "";
     coordY1 = "";
@@ -124,11 +125,12 @@ class LabelerPanelState {
             inputText: this.inputText,
             commandType: this.commandType,
             commandTypeName: this.commandTypeName,
+            currentFocus: this.currentFocus,
         });
     }
 
     // Method to parse JSON and assign values to properties
-    fromJSON(data: object) {
+    fromJSON(data: LabelerPanelState) {
         try {
             // const data = JSON.parse(json);
             this.width = data.width;
@@ -145,6 +147,7 @@ class LabelerPanelState {
             this.inputText = data.inputText;
             this.commandType = data.commandType;
             this.commandTypeName = data.commandTypeName;
+            this.currentFocus = data.currentFocus;
         } catch (error) {
             console.error('Error parsing JSON:', error);
         }
@@ -167,7 +170,7 @@ function saveFile(fileName: string, size?: number | undefined) {
 
 
 // Define ADB command types
-type AdbCommandType = 'tap' | 'text' | 'swipe' | 'keyevent' | 'start' | 'finish';
+type AdbCommandType = 'tap' | 'text' | 'swipe' | 'keyevent' | 'start' | 'wait' | 'finish';
 
 // Function to execute ADB command
 async function executeAdbCommand(command: string) {
@@ -218,6 +221,9 @@ const adbCommands: Record<AdbCommandType, (params: any) => void> = {
     'start': () => {
         const command = 'am start -a android.intent.action.MAIN -c android.intent.category.HOME';
         executeAdbCommand(command);
+    },
+    'wait': () => {
+
     },
     'finish': () => {
 
@@ -313,13 +319,36 @@ function traverseTree(xmlDoc: Document, elemList: AndroidElement[], attrib: stri
     }
 }
 
+async function getCurrentFocusWindow(adb: Adb): Promise<string> {
+    const command = 'dumpsys window | grep mCurrentFocus';
+    try {
+        const stdout = await adb.subprocess.spawnAndWaitLegacy(command.split(" "));
+        const responseStr = stdout.trim();
+
+        let focusPattern = /mCurrentFocus=Window{.*? (.*?) (.*?)}/g;
+        let matches;
+        let focusValues: string[] = [];
+
+        while ((matches = focusPattern.exec(responseStr)) !== null) {
+            focusValues.push(matches[2]);
+        }
+        console.log(focusValues);
+        return focusValues.join(',');
+    } catch (error) {
+        if (error instanceof Error) {
+            throw new AdbXmlFetchError(error.message);
+        } else {
+            throw new AdbXmlFetchError("An unknown error occurred.");
+        }
+    }
+    return "";
+}
 
 export async function getXmlViaSocket(adb: Adb, prefix: string, saveDir: string): Promise<string> {
     // const dumpCommand = `uiautomator dump /sdcard/${prefix}.xml`;
     const dumpCommand = `app_process -Djava.class.path=/data/local/tmp/yadb /data/local/tmp com.ysbing.yadb.Main -layout`;
 
     try {
-
         let stdout = await adb.subprocess.spawnAndWaitLegacy(dumpCommand.split(" "));
 
         let responseStr = stdout.trim();
@@ -353,7 +382,6 @@ export async function getXmlViaSocket(adb: Adb, prefix: string, saveDir: string)
         // Convert Blob to string
         const text = await blob.text();
         return text
-
 
     } finally {
         sync.dispose();
@@ -399,7 +427,10 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         const dateStr = formatDate();
         const imageFileName = `${dateStr}_${GLOBAL_STATE.adb?.banner.model}.png`;
         STATE.currentFile = imageFileName;
+        state.xmlDocStr = "";
+        state.xmltexts = "";
     }, []);
+
     const replayAction = useCallback(async () => {
         if (!GLOBAL_STATE.adb) {
             return;
@@ -430,6 +461,110 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         }
     }, []);
 
+    const runActivity = useCallback(async () => {
+        if (!GLOBAL_STATE.adb) {
+            return;
+        }
+
+        try {
+            const command = `am start-activity -n ${state.currentFocus}`;
+            const stdout = await GLOBAL_STATE.adb.subprocess.spawnAndWaitLegacy(command.split(" "));
+            const responseStr = stdout.trim();
+            console.log(responseStr);
+
+        } catch (e: any) {
+            GLOBAL_STATE.showErrorDialog(e);
+        }
+    }, []);
+
+
+
+    const previousFileFun = useCallback(async () => {
+        try {
+            await previousFile(STATE.currentFile);
+            const imgblob = await readBlob(STATE.currentFile);
+            const newFileName = STATE.currentFile.replace(/\.[^/.]+$/, ".json");
+            const jsondata = await readFile(newFileName);
+            state.fromJSON(jsondata);
+
+            // 将Blob对象转换为URL
+            const imageUrlBlob = URL.createObjectURL(imgblob);
+
+            // 创建一个Image对象
+            const img = new Image();
+            img.onload = function () {
+                const canvas = canvasRef.current;
+                if (!canvas) {
+                    return;
+                }
+                const context = canvas.getContext('2d');
+
+                // 设置canvas的宽度和高度为图片的宽度和高度
+                canvas.width = img.width;
+                canvas.height = img.height;
+
+                if (!context) {
+                    return;
+                }
+                // 将图像绘制到Canvas上
+                context.drawImage(img, 0, 0);
+                state.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                state.width = img.width;
+                state.height = img.height;
+
+            };
+
+            // 设置Image的src属性为Blob URL
+            img.src = imageUrlBlob;
+        } catch (error) {
+            setError('Error downloading file:' + error);
+        }
+        refreshFiles();
+    }, []);
+
+    const nextFileFun = useCallback(async () => {
+        try {
+            await nextFile(STATE.currentFile);
+            const imgblob = await readBlob(STATE.currentFile);
+            const newFileName = STATE.currentFile.replace(/\.[^/.]+$/, ".json");
+            const jsondata = await readFile(newFileName);
+            state.fromJSON(jsondata);
+
+            // 将Blob对象转换为URL
+            const imageUrlBlob = URL.createObjectURL(imgblob);
+
+            // 创建一个Image对象
+            const img = new Image();
+            img.onload = function () {
+                const canvas = canvasRef.current;
+                if (!canvas) {
+                    return;
+                }
+                const context = canvas.getContext('2d');
+
+                // 设置canvas的宽度和高度为图片的宽度和高度
+                canvas.width = img.width;
+                canvas.height = img.height;
+
+                if (!context) {
+                    return;
+                }
+                // 将图像绘制到Canvas上
+                context.drawImage(img, 0, 0);
+                state.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                state.width = img.width;
+                state.height = img.height;
+
+            };
+
+            // 设置Image的src属性为Blob URL
+            img.src = imageUrlBlob;
+        } catch (error) {
+            setError('Error downloading file:' + error);
+        }
+        refreshFiles();
+
+    }, []);
 
     function drawBboxMulti(elemList: AndroidElement[], recordMode = false, darkMode = false): void {
         elemList.forEach((elem, index) => {
@@ -484,6 +619,12 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         }
 
         try {
+            const currentFocus = await getCurrentFocusWindow(GLOBAL_STATE.adb);
+            let all_text = 'activity:\n' + currentFocus + "\n";
+            runInAction(() => {
+                state.xmltexts = all_text;
+                state.currentFocus = currentFocus;
+            });
             // Get the XML
             const prefix = "ui_dump";
             const saveDir = "/path/to/save/xml";
@@ -504,7 +645,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
             traverseTreeAndExtractText(xmlDoc, text_list, true);
 
 
-            let all_text = 'view文字:\n'; // Clear previous content
+            all_text += 'view文字:\n'; // Clear previous content
 
             text_list.forEach(elem => {
                 const x1 = elem.bbox[0][0];
@@ -562,6 +703,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                 state.xmlDocStr = xmltext;
                 state.xmltexts = all_text;
                 state.elements = elemList;
+                state.currentFocus = currentFocus;
             });
             drawBboxMulti(elemList, false, false)
 
@@ -699,105 +841,37 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         },
         {
             key: 'previousFile',
+            disabled: false,
             iconProps: {
                 iconName: Icons.ChevronUp,
                 style: { height: 10, fontSize: 10, lineHeight: 1.0 },
             },
             text: "上一张",
-            onClick: async () => {
-                try {
-                    await previousFile(STATE.currentFile);
-                    const imgblob = await readBlob(STATE.currentFile);
-                    const newFileName = STATE.currentFile.replace(/\.[^/.]+$/, ".json");
-                    const jsondata = await readFile(newFileName);
-                    state.fromJSON(jsondata);
-
-                    // 将Blob对象转换为URL
-                    const imageUrlBlob = URL.createObjectURL(imgblob);
-
-                    // 创建一个Image对象
-                    const img = new Image();
-                    img.onload = function () {
-                        const canvas = canvasRef.current;
-                        if (!canvas) {
-                            return;
-                        }
-                        const context = canvas.getContext('2d');
-
-                        // 设置canvas的宽度和高度为图片的宽度和高度
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-
-                        if (!context) {
-                            return;
-                        }
-                        // 将图像绘制到Canvas上
-                        context.drawImage(img, 0, 0);
-                        state.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                        state.width = img.width;
-                        state.height = img.height;
-
-                    };
-
-                    // 设置Image的src属性为Blob URL
-                    img.src = imageUrlBlob;
-                } catch (error) {
-                    setError('Error downloading file:' + error);
-                }
-                refreshFiles();
-            },
+            onClick: previousFileFun,
         },
         {
             key: 'nextFile',
+            disabled: false,
             iconProps: {
                 iconName: Icons.ChevronDown,
                 style: { height: 10, fontSize: 10, lineHeight: 1.0 },
             },
             text: "下一张",
-            onClick: async () => {
-                try {
-                    await nextFile(STATE.currentFile);
-                    const imgblob = await readBlob(STATE.currentFile);
-                    const newFileName = STATE.currentFile.replace(/\.[^/.]+$/, ".json");
-                    const jsondata = await readFile(newFileName);
-                    state.fromJSON(jsondata);
-
-                    // 将Blob对象转换为URL
-                    const imageUrlBlob = URL.createObjectURL(imgblob);
-
-                    // 创建一个Image对象
-                    const img = new Image();
-                    img.onload = function () {
-                        const canvas = canvasRef.current;
-                        if (!canvas) {
-                            return;
-                        }
-                        const context = canvas.getContext('2d');
-
-                        // 设置canvas的宽度和高度为图片的宽度和高度
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-
-                        if (!context) {
-                            return;
-                        }
-                        // 将图像绘制到Canvas上
-                        context.drawImage(img, 0, 0);
-                        state.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                        state.width = img.width;
-                        state.height = img.height;
-
-                    };
-
-                    // 设置Image的src属性为Blob URL
-                    img.src = imageUrlBlob;
-                } catch (error) {
-                    setError('Error downloading file:' + error);
-                }
-                refreshFiles();
-            },
+            onClick: nextFileFun,
         },
 
+        {
+            key: "end",
+            disabled: true,
+            iconProps: {
+                iconName: Icons.Save,
+                style: { height: 0, fontSize: 0, lineHeight: 0 },
+            },
+            text: "",
+            onClick: () => {
+
+            },
+        },
     ]);
 
     const formatDate = () => {
@@ -819,28 +893,28 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         return `${year}${month}${day}_${hours}${minutes}${seconds}`;
     };
 
-    console.log(formatDate()); // 输出类似于：20240617_144530
+    // console.log(formatDate()); // 输出类似于：20240617_144530
 
 
-    async function decodeImage(arrayBuffer: ArrayBuffer): Promise<HTMLImageElement> {
-        return new Promise<HTMLImageElement>((resolve, reject) => {
-            const blob = new Blob([arrayBuffer]);
-            const imageUrl = URL.createObjectURL(blob);
-            const img = new Image();
+    // async function decodeImage(arrayBuffer: ArrayBuffer): Promise<HTMLImageElement> {
+    //     return new Promise<HTMLImageElement>((resolve, reject) => {
+    //         const blob = new Blob([arrayBuffer]);
+    //         const imageUrl = URL.createObjectURL(blob);
+    //         const img = new Image();
 
-            img.onload = () => {
-                URL.revokeObjectURL(imageUrl);
-                resolve(img);
-            };
+    //         img.onload = () => {
+    //             URL.revokeObjectURL(imageUrl);
+    //             resolve(img);
+    //         };
 
-            img.onerror = (error) => {
-                URL.revokeObjectURL(imageUrl);
-                reject(error);
-            };
+    //         img.onerror = (error) => {
+    //             URL.revokeObjectURL(imageUrl);
+    //             reject(error);
+    //         };
 
-            img.src = imageUrl;
-        });
-    }
+    //         img.src = imageUrl;
+    //     });
+    // }
 
     // Function to convert ImageData to Blob
     function imageDataToBlob(imageData: ImageData): Promise<Blob> {
@@ -964,6 +1038,28 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                 refreshFiles();
             },
         },
+        {
+            key: "activity",
+            disabled: !GLOBAL_STATE.adb || !state.currentFocus,
+            iconProps: {
+                iconName: Icons.Phone,
+                style: { height: 10, fontSize: 10, lineHeight: 1.0 },
+            },
+            text: "直通",
+            onClick: runActivity,
+        },
+        {
+            key: "end",
+            disabled: true,
+            iconProps: {
+                iconName: Icons.Save,
+                style: { height: 0, fontSize: 0, lineHeight: 0 },
+            },
+            text: "",
+            onClick: () => {
+
+            },
+        },
     ]);
 
     // Function to handle ADB command execution
@@ -987,6 +1083,9 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                         break;
                     case "start":
                         state.commandTypeName = "HOME";
+                        break;
+                    case "wait":
+                        state.commandTypeName = "等待";
                         break;
                     case "finish":
                         state.commandTypeName = "完成";
@@ -1025,6 +1124,10 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         handleAdbCommand('start', {});
     }, [handleAdbCommand]);
 
+
+    const handleWaitEvent = useCallback(() => {
+        handleAdbCommand('wait', {});
+    }, [handleAdbCommand]);
 
     const handleFinishEvent = useCallback(() => {
         handleAdbCommand('finish', {});
@@ -1089,13 +1192,14 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                         />
                     </Stack>
                     <Stack horizontal tokens={{ childrenGap: 2 }}>
-                        <DefaultButton text="点击" onClick={handleTap} styles={{ root: { minWidth: 50 } }} />
-                        <DefaultButton text="滑动" onClick={handleSwipe} styles={{ root: { minWidth: 50 } }} />
-                        <DefaultButton text="输入" onClick={handleTypeText} styles={{ root: { minWidth: 50 } }} />
+                        <DefaultButton text="点" onClick={handleTap} styles={{ root: { minWidth: 30 } }} />
+                        <DefaultButton text="滑" onClick={handleSwipe} styles={{ root: { minWidth: 30 } }} />
+                        <DefaultButton text="输入" onClick={handleTypeText} styles={{ root: { minWidth: 30 } }} />
 
-                        <DefaultButton text="返回" onClick={handleKeyEvent} styles={{ root: { minWidth: 50 } }} />
-                        <DefaultButton text="Home" onClick={handleStartMainActivity} styles={{ root: { minWidth: 50 } }} />
-                        <DefaultButton text="完成" onClick={handleFinishEvent} styles={{ root: { minWidth: 50 } }} />
+                        <DefaultButton text="返回" onClick={handleKeyEvent} styles={{ root: { minWidth: 30 } }} />
+                        <DefaultButton text="家" onClick={handleStartMainActivity} styles={{ root: { minWidth: 30 } }} />
+                        <DefaultButton text="等待" onClick={handleWaitEvent} styles={{ root: { minWidth: 30 } }} />
+                        <DefaultButton text="完成" onClick={handleFinishEvent} styles={{ root: { minWidth: 30 } }} />
                     </Stack>
                     <Stack horizontal tokens={{ childrenGap: 2 }}>
                         <TextField
