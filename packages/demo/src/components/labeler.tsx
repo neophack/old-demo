@@ -28,7 +28,7 @@ import { CommandBar, DemoModePanel, DeviceView } from "../components";
 import { Adb, AdbFrameBuffer, AdbFrameBufferV1, AdbFrameBufferV2, AdbFrameBufferForbiddenError, AdbFrameBufferUnsupportedVersionError } from "@yume-chan/adb";
 import { BufferedReadableStream } from "@yume-chan/stream-extra";
 import { readBlob, readFile, uploadFile, FileService, refreshFiles, previousFile, nextFile } from "./file-service"
-import { STATE } from "../components/scrcpy/state";
+import { STATE, AndroidElement } from "../components/scrcpy/state";
 
 import getConfig from "next/config";
 let StreamSaver: typeof import("@yume-chan/stream-saver");
@@ -62,17 +62,7 @@ const configs: Configs = {
     MIN_DIST: 50, // Example value, adjust accordingly
 };
 
-class AndroidElement {
-    id: string;
-    bbox: [[number, number], [number, number]];
-    attrib: string;
 
-    constructor(id: string, bbox: [[number, number], [number, number]], attrib: string) {
-        this.id = id;
-        this.bbox = bbox;
-        this.attrib = attrib;
-    }
-}
 
 class LabelerPanelState {
     contextMenuTarget: MouseEvent | undefined = undefined;
@@ -98,11 +88,14 @@ class LabelerPanelState {
     setImage(image: AdbFrameBuffer) {
         this.width = image.width;
         this.height = image.height;
-        this.imageData = new ImageData(
+        STATE.imageData = new ImageData(
             new Uint8ClampedArray(image.data),
             image.width,
             image.height
         );
+        // STATE.imageData = this.imageData;
+        STATE.capwidth = image.width;
+        STATE.capheight = image.height;
     }
     constructor() {
         makeAutoObservable(this);
@@ -111,17 +104,18 @@ class LabelerPanelState {
     // Method to convert state to JSON
     toJSON(): string {
         return JSON.stringify({
-            width: this.width,
-            height: this.height,
+            width: STATE.capwidth,
+            height: STATE.capheight,
             thought: this.thought,
+            elements: STATE.elements,
             xmlDocStr: this.xmlDocStr,
             xmltexts: this.xmltexts,
             task: this.task,
             observation: this.observation,
-            coordX1: this.coordX1,
-            coordY1: this.coordY1,
-            coordX2: this.coordX2,
-            coordY2: this.coordY2,
+            coordX1: STATE.coordX1,
+            coordY1: STATE.coordY1,
+            coordX2: STATE.coordX2,
+            coordY2: STATE.coordY2,
             inputText: this.inputText,
             commandType: this.commandType,
             commandTypeName: this.commandTypeName,
@@ -133,17 +127,17 @@ class LabelerPanelState {
     fromJSON(data: LabelerPanelState) {
         try {
             // const data = JSON.parse(json);
-            this.width = data.width;
-            this.height = data.height;
+            STATE.capwidth = data.width;
+            STATE.capheight = data.height;
             this.thought = data.thought;
-            this.elements = data.elements;
+            STATE.elements = data.elements;
             this.xmltexts = data.xmltexts;
             this.task = data.task;
             this.observation = data.observation;
-            this.coordX1 = data.coordX1;
-            this.coordY1 = data.coordY1;
-            this.coordX2 = data.coordX2;
-            this.coordY2 = data.coordY2;
+            STATE.coordX1 = data.coordX1;
+            STATE.coordY1 = data.coordY1;
+            STATE.coordX2 = data.coordX2;
+            STATE.coordY2 = data.coordY2;
             this.inputText = data.inputText;
             this.commandType = data.commandType;
             this.commandTypeName = data.commandTypeName;
@@ -429,6 +423,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         STATE.currentFile = imageFileName;
         state.xmlDocStr = "";
         state.xmltexts = "";
+        STATE.elements = [];
     }, []);
 
     const replayAction = useCallback(async () => {
@@ -439,13 +434,13 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         try {
             switch (state.commandType) {
                 case "tap":
-                    handleAdbCommand('tap', { x: state.coordX1, y: state.coordY1 });
+                    handleAdbCommand('tap', { x: STATE.coordX1, y: STATE.coordY1 });
                     break;
                 case "text":
                     handleAdbCommand('text', { text: state.inputText });
                     break;
                 case "swipe":
-                    handleAdbCommand('swipe', { x1: state.coordX1, y1: state.coordY1, x2: state.coordX2, y2: state.coordY2 }); // Replace with actual coordinates
+                    handleAdbCommand('swipe', { x1: STATE.coordX1, y1: STATE.coordY1, x2: STATE.coordX2, y2: STATE.coordY2 }); // Replace with actual coordinates
                     break;
                 case "keyevent":
                     const keyCode = 4; // Replace with desired key code
@@ -494,6 +489,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
             const img = new Image();
             img.onload = function () {
                 const canvas = canvasRef.current;
+                // const canvas = document.createElement('canvas');
                 if (!canvas) {
                     return;
                 }
@@ -508,9 +504,12 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                 }
                 // 将图像绘制到Canvas上
                 context.drawImage(img, 0, 0);
-                state.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                state.width = img.width;
-                state.height = img.height;
+                STATE.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                // state.width = img.width;
+                // state.height = img.height;
+                // STATE.imageData = STATE.imageData;
+                STATE.capwidth = img.width;
+                STATE.capheight = img.height;
 
             };
 
@@ -537,6 +536,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
             const img = new Image();
             img.onload = function () {
                 const canvas = canvasRef.current;
+                // const canvas = document.createElement('canvas');
                 if (!canvas) {
                     return;
                 }
@@ -551,9 +551,12 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                 }
                 // 将图像绘制到Canvas上
                 context.drawImage(img, 0, 0);
-                state.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                state.width = img.width;
-                state.height = img.height;
+                STATE.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                // state.width = img.width;
+                // state.height = img.height;
+                // STATE.imageData = STATE.imageData;
+                STATE.capwidth = img.width;
+                STATE.capheight = img.height;
 
             };
 
@@ -566,53 +569,53 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
 
     }, []);
 
-    function drawBboxMulti(elemList: AndroidElement[], recordMode = false, darkMode = false): void {
-        elemList.forEach((elem, index) => {
-            try {
-                const topLeft = elem.bbox[0];
-                const bottomRight = elem.bbox[1];
-                const left = topLeft[0];
-                const top = topLeft[1];
-                const right = bottomRight[0];
-                const bottom = bottomRight[1];
-                const label = (index + 1).toString();
-                let color: string;
+    // function drawBboxMulti(elemList: AndroidElement[], recordMode = false, darkMode = false): void {
+    //     elemList.forEach((elem, index) => {
+    //         try {
+    //             const topLeft = elem.bbox[0];
+    //             const bottomRight = elem.bbox[1];
+    //             const left = topLeft[0];
+    //             const top = topLeft[1];
+    //             const right = bottomRight[0];
+    //             const bottom = bottomRight[1];
+    //             const label = (index + 1).toString();
+    //             let color: string;
 
-                if (recordMode) {
-                    if (elem.attrib === 'clickable') {
-                        color = 'rgba(250, 0, 0, 0.5)';
-                    } else if (elem.attrib === 'focusable') {
-                        color = 'rgba(0, 0, 250, 0.5)';
-                    } else {
-                        color = 'rgba(0, 250, 0, 0.5)';
-                    }
-                } else {
-                    color = darkMode ? 'rgba(250, 10, 10, 0.5)' : 'rgba(0, 250, 250, 0.5)';
-                }
-                const canvas = canvasRef.current;
-                if (canvas && state.imageData) {
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                        // Draw rectangle
-                        ctx.strokeStyle = color;
-                        ctx.lineWidth = 2;
-                        ctx.strokeRect(left, top, right - left, bottom - top);
+    //             if (recordMode) {
+    //                 if (elem.attrib === 'clickable') {
+    //                     color = 'rgba(250, 0, 0, 0.5)';
+    //                 } else if (elem.attrib === 'focusable') {
+    //                     color = 'rgba(0, 0, 250, 0.5)';
+    //                 } else {
+    //                     color = 'rgba(0, 250, 0, 0.5)';
+    //                 }
+    //             } else {
+    //                 color = darkMode ? 'rgba(250, 10, 10, 0.5)' : 'rgba(0, 250, 250, 0.5)';
+    //             }
+    //             const canvas = canvasRef.current;
+    //             if (canvas && STATE.imageData) {
+    //                 const ctx = canvas.getContext('2d');
+    //                 if (ctx) {
+    //                     // Draw rectangle
+    //                     ctx.strokeStyle = color;
+    //                     ctx.lineWidth = 2;
+    //                     ctx.strokeRect(left, top, right - left, bottom - top);
 
-                        ctx.font = '50px Arial';
-                        // Draw label
-                        ctx.fillStyle = color;
-                        ctx.fillRect((left + right) / 2 + 10, (top + bottom) / 2 + 10, 80, 80);
-                        ctx.fillStyle = darkMode ? 'rgba(255, 250, 250, 0.5)' : 'rgba(10, 10, 10, 0.5)';
-                        ctx.fillText(label, (left + right) / 2 + 15, (top + bottom) / 2 + 60);
-                    }
-                }
+    //                     ctx.font = '50px Arial';
+    //                     // Draw label
+    //                     ctx.fillStyle = color;
+    //                     ctx.fillRect((left + right) / 2 + 10, (top + bottom) / 2 + 10, 80, 80);
+    //                     ctx.fillStyle = darkMode ? 'rgba(255, 250, 250, 0.5)' : 'rgba(10, 10, 10, 0.5)';
+    //                     ctx.fillText(label, (left + right) / 2 + 15, (top + bottom) / 2 + 60);
+    //                 }
+    //             }
 
-            } catch (e) {
-                setError("ERROR: An exception occurs while labeling the image\n" + e);
-            }
-        });
+    //         } catch (e) {
+    //             setError("ERROR: An exception occurs while labeling the image\n" + e);
+    //         }
+    //     });
 
-    }
+    // }
     const capturexml = useCallback(async () => {
         if (!GLOBAL_STATE.adb) {
             return;
@@ -702,10 +705,11 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
             runInAction(() => {
                 state.xmlDocStr = xmltext;
                 state.xmltexts = all_text;
-                state.elements = elemList;
+                // state.elements = elemList;
                 state.currentFocus = currentFocus;
+                STATE.elements = elemList;
             });
-            drawBboxMulti(elemList, false, false)
+            // drawBboxMulti(elemList, false, false)
 
         } catch (e: any) {
             GLOBAL_STATE.showErrorDialog(e);
@@ -715,98 +719,98 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
 
 
     useEffect(() => {
-        const canvas = canvasRef.current;
-        const handleCanvasMousedown = (event: MouseEvent) => {
-            if (canvas) {
-                const rect = canvas.getBoundingClientRect();
-                const x = state.width * (event.clientX - rect.left) / rect.width;
-                const y = state.height * (event.clientY - rect.top) / rect.height;
-                runInAction(() => {
-                    state.coordX1 = `${x.toFixed(0)}`;
-                    state.coordY1 = `${y.toFixed(0)}`;
-                });
-            }
-            mouseisdown.current = true;
-        };
-        const handleCanvasMouseup = (event: MouseEvent) => {
-            if (canvas) {
-                const rect = canvas.getBoundingClientRect();
-                const x = state.width * (event.clientX - rect.left) / rect.width;
-                const y = state.height * (event.clientY - rect.top) / rect.height;
-                runInAction(() => {
-                    state.coordX2 = `${x.toFixed(0)}`;
-                    state.coordY2 = `${y.toFixed(0)}`;
-                });
-            }
-            mouseisdown.current = false;
-        };
-        const handleCanvasMousemove = (event: MouseEvent) => {
-            if (canvas && mouseisdown.current) {
-                const rect = canvas.getBoundingClientRect();
-                const x = state.width * (event.clientX - rect.left) / rect.width;
-                const y = state.height * (event.clientY - rect.top) / rect.height;
-                runInAction(() => {
-                    state.coordX2 = `${x.toFixed(0)}`;
-                    state.coordY2 = `${y.toFixed(0)}`;
-                });
-            }
-        };
-        if (canvas) {
-            canvas.addEventListener("mousedown", handleCanvasMousedown);
-            canvas.addEventListener("mouseup", handleCanvasMouseup);
-            canvas.addEventListener("mousemove", handleCanvasMousemove);
-        }
+        // const canvas = canvasRef.current;
+        // const handleCanvasMousedown = (event: MouseEvent) => {
+        //     if (canvas) {
+        //         const rect = canvas.getBoundingClientRect();
+        //         const x = state.width * (event.clientX - rect.left) / rect.width;
+        //         const y = state.height * (event.clientY - rect.top) / rect.height;
+        //         runInAction(() => {
+        //             STATE.coordX1 = `${x.toFixed(0)}`;
+        //             STATE.coordY1 = `${y.toFixed(0)}`;
+        //         });
+        //     }
+        //     mouseisdown.current = true;
+        // };
+        // const handleCanvasMouseup = (event: MouseEvent) => {
+        //     if (canvas) {
+        //         const rect = canvas.getBoundingClientRect();
+        //         const x = state.width * (event.clientX - rect.left) / rect.width;
+        //         const y = state.height * (event.clientY - rect.top) / rect.height;
+        //         runInAction(() => {
+        //             STATE.coordX2 = `${x.toFixed(0)}`;
+        //             STATE.coordY2 = `${y.toFixed(0)}`;
+        //         });
+        //     }
+        //     mouseisdown.current = false;
+        // };
+        // const handleCanvasMousemove = (event: MouseEvent) => {
+        //     if (canvas && mouseisdown.current) {
+        //         const rect = canvas.getBoundingClientRect();
+        //         const x = state.width * (event.clientX - rect.left) / rect.width;
+        //         const y = state.height * (event.clientY - rect.top) / rect.height;
+        //         runInAction(() => {
+        //             STATE.coordX2 = `${x.toFixed(0)}`;
+        //             STATE.coordY2 = `${y.toFixed(0)}`;
+        //         });
+        //     }
+        // };
+        // if (canvas) {
+        //     canvas.addEventListener("mousedown", handleCanvasMousedown);
+        //     canvas.addEventListener("mouseup", handleCanvasMouseup);
+        //     canvas.addEventListener("mousemove", handleCanvasMousemove);
+        // }
 
         return autorun(() => {
 
-            const canvas = canvasRef.current;
-            if (canvas && state.imageData) {
-                canvas.width = state.width;
-                canvas.height = state.height;
-                const context = canvas.getContext("2d")!;
-                context.putImageData(state.imageData, 0, 0);
-            }
-            drawCoordinates();
+            // const canvas = canvasRef.current;
+            // if (canvas && STATE.imageData) {
+            //     canvas.width = state.width;
+            //     canvas.height = state.height;
+            //     const context = canvas.getContext("2d")!;
+            //     context.putImageData(STATE.imageData, 0, 0);
+            // }
+            // drawCoordinates();
         });
     }, []);
 
-    const drawCoordinates = () => {
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const context = canvas.getContext('2d');
-            if (context) {
-                // context.clearRect(0, 0, canvas.width, canvas.height);
+    // const drawCoordinates = () => {
+    //     const canvas = canvasRef.current;
+    //     if (canvas) {
+    //         const context = canvas.getContext('2d');
+    //         if (context) {
+    //             // context.clearRect(0, 0, canvas.width, canvas.height);
 
-                const { coordX1, coordY1, coordX2, coordY2 } = state;
-                if (coordX1 && coordY1 && coordX2 && coordY2) {
-                    const icoordX1 = parseInt(coordX1);
-                    const icoordY1 = parseInt(coordY1);
-                    const icoordX2 = parseInt(coordX2);
-                    const icoordY2 = parseInt(coordY2);
-                    // Draw first point in red
-                    context.fillStyle = 'red';
-                    context.beginPath();
-                    context.arc(icoordX1, icoordY1, 20, 0, 2 * Math.PI);
-                    context.fill();
+    //             const { coordX1, coordY1, coordX2, coordY2 } = state;
+    //             if (coordX1 && coordY1 && coordX2 && coordY2) {
+    //                 const icoordX1 = parseInt(coordX1);
+    //                 const icoordY1 = parseInt(coordY1);
+    //                 const icoordX2 = parseInt(coordX2);
+    //                 const icoordY2 = parseInt(coordY2);
+    //                 // Draw first point in red
+    //                 context.fillStyle = 'red';
+    //                 context.beginPath();
+    //                 context.arc(icoordX1, icoordY1, 20, 0, 2 * Math.PI);
+    //                 context.fill();
 
-                    // Draw second point in blue
-                    context.fillStyle = 'blue';
-                    context.beginPath();
-                    context.arc(icoordX2, icoordY2, 20, 0, 2 * Math.PI);
-                    context.fill();
+    //                 // Draw second point in blue
+    //                 context.fillStyle = 'blue';
+    //                 context.beginPath();
+    //                 context.arc(icoordX2, icoordY2, 20, 0, 2 * Math.PI);
+    //                 context.fill();
 
-                    // Draw line connecting points in green
-                    context.strokeStyle = 'green';
-                    context.lineWidth = 10;
-                    context.beginPath();
-                    context.moveTo(icoordX1, icoordY1);
-                    context.lineTo(icoordX2, icoordY2);
-                    context.stroke();
-                }
-            }
-        }
+    //                 // Draw line connecting points in green
+    //                 context.strokeStyle = 'green';
+    //                 context.lineWidth = 10;
+    //                 context.beginPath();
+    //                 context.moveTo(icoordX1, icoordY1);
+    //                 context.lineTo(icoordX2, icoordY2);
+    //                 context.stroke();
+    //             }
+    //         }
+    //     }
 
-    };
+    // };
 
     const commandBarItems = computed(() => [
         {
@@ -938,51 +942,55 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
     const commandBarItems2 = computed(() => [
         {
             key: 'Save',
-            disabled: !state.imageData || STATE.currentFile == "",
+            disabled: !STATE.imageData || STATE.currentFile == "",
             iconProps: {
                 iconName: Icons.Save,
                 style: { height: 10, fontSize: 10, lineHeight: 1.0 },
             },
             text: '保存',
             onClick: async () => {
-                // const dateStr = formatDate();
-                // const imageFileName = `${dateStr}.png`;
-                // const jsonFileName = `${dateStr}.json`;
+                try {
+                    // const dateStr = formatDate();
+                    // const imageFileName = `${dateStr}.png`;
+                    // const jsonFileName = `${dateStr}.json`;
 
-                const baseName = STATE.currentFile.split('.').slice(0, -1).join('.'); // 没有后缀的文件名
-                const imageFileName = STATE.currentFile;
-                const jsonFileName = `${baseName}.json`;
-                if (state.imageData) {
-                    imageDataToBlob(state.imageData).then((blob) => {
-                        const file = new File([blob], imageFileName, {
-                            type: 'image/png',
+                    const baseName = STATE.currentFile.split('.').slice(0, -1).join('.'); // 没有后缀的文件名
+                    const imageFileName = STATE.currentFile;
+                    const jsonFileName = `${baseName}.json`;
+                    if (STATE.imageData) {
+                        imageDataToBlob(STATE.imageData).then((blob) => {
+                            const file = new File([blob], imageFileName, {
+                                type: 'image/png',
+                            });
+                            // Now you have a File object created from the STATE.imageData
+                            console.log(file);
+                            try {
+                                const result = uploadFile(file);
+                                console.log('File uploaded successfully:', result);
+                            } catch (error) {
+                                setError('Error uploading file:' + error);
+                            }
+
+                            // Convert state to JSON
+                            const jsonContent = state.toJSON();
+
+                            // Upload a JSON file
+                            const file2 = new File([jsonContent], jsonFileName, { type: 'application/json' });
+                            try {
+                                const uploadResponse = uploadFile(file2);
+                                console.log('File uploaded successfully:', uploadResponse);
+                            } catch (error) {
+                                setError('Failed to upload file:' + error);
+                            }
                         });
-                        // Now you have a File object created from the state.imageData
-                        console.log(file);
-                        try {
-                            const result = uploadFile(file);
-                            console.log('File uploaded successfully:', result);
-                        } catch (error) {
-                            setError('Error uploading file:' + error);
-                        }
-
-                        // Convert state to JSON
-                        const jsonContent = state.toJSON();
-
-                        // Upload a JSON file
-                        const file2 = new File([jsonContent], jsonFileName, { type: 'application/json' });
-                        try {
-                            const uploadResponse = uploadFile(file2);
-                            console.log('File uploaded successfully:', uploadResponse);
-                        } catch (error) {
-                            setError('Failed to upload file:' + error);
-                        }
-                    });
+                    }
+                } catch (error) {
+                    setError('Error downloading file:' + error);
                 }
-                const canvas = canvasRef.current;
-                if (!canvas) {
-                    return;
-                }
+                // const canvas = canvasRef.current;
+                // if (!canvas) {
+                //     return;
+                // }
                 setTimeout(() => {
                     refreshFiles();
                 }, 1000); // 1 second delay (adjust as needed)
@@ -1024,9 +1032,11 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                         }
                         // 将图像绘制到Canvas上
                         context.drawImage(img, 0, 0);
-                        state.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                        state.width = img.width;
-                        state.height = img.height;
+                        STATE.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                        // state.width = img.width;
+                        // state.height = img.height;
+                        STATE.capwidth = img.width;
+                        STATE.capheight = img.height;
 
                     };
 
@@ -1099,7 +1109,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
 
     // Example button handler for tapping
     const handleTap = useCallback(() => {
-        handleAdbCommand('tap', { x: state.coordX1, y: state.coordY1 }); // Replace with actual coordinates
+        handleAdbCommand('tap', { x: STATE.coordX1, y: STATE.coordY1 }); // Replace with actual coordinates
     }, [handleAdbCommand]);
 
     // Example button handler for typing text
@@ -1110,7 +1120,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
 
     // Example button handler for swiping
     const handleSwipe = useCallback(() => {
-        handleAdbCommand('swipe', { x1: state.coordX1, y1: state.coordY1, x2: state.coordX2, y2: state.coordY2 }); // Replace with actual coordinates
+        handleAdbCommand('swipe', { x1: STATE.coordX1, y1: STATE.coordY1, x2: STATE.coordX2, y2: STATE.coordY2 }); // Replace with actual coordinates
     }, [handleAdbCommand]);
 
     // Example button handler for key event
@@ -1145,124 +1155,125 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
     return (
 
         <Stack  {...RouteStackProps} style={{ padding: 0 }}>
-            <Stack horizontal grow styles={{ root: { height: 0 } }}>
+            {/* <Stack horizontal grow styles={{ root: { height: 0 } }}> */}
+            {/* <canvas ref={canvasRef} style={{ display: "hidden" }} /> */}
 
-                <DeviceView width={state.width} height={state.height}>
-                    <canvas ref={canvasRef} style={{ display: "block" }} />
-                </DeviceView>
+            <Stack tokens={{ childrenGap: 2 }} style={{ padding: 2 }}>
+                <CommandBar
+                    items={commandBarItems.get()}
+                />
+                <CommandBar
+                    items={commandBarItems2.get()}
+                />
 
-                <Stack tokens={{ childrenGap: 2 }} style={{ padding: 2 }}>
-                    <CommandBar
-                        items={commandBarItems.get()}
-                    />
-                    <CommandBar
-                        items={commandBarItems2.get()}
-                    />
-
+                <TextField
+                    label="界面文字:"
+                    multiline
+                    rows={7} // Adjust rows as needed
+                    value={state.xmltexts}
+                    onChange={(e, newValue) => state.xmltexts = newValue || ""}
+                />
+                <TextField
+                    label="任务："
+                    multiline
+                    rows={3}
+                    value={state.task}
+                    onChange={(e, newValue) => state.task = newValue || ""}
+                />
+                <Stack horizontal tokens={{ childrenGap: 2 }} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <TextField
-                        label="界面文字:"
-                        multiline
-                        rows={7} // Adjust rows as needed
-                        value={state.xmltexts}
-                        onChange={(e, newValue) => state.xmltexts = newValue || ""}
-                    />
-                    <TextField
-                        label="任务："
+                        label="观察："
                         multiline
                         rows={3}
-                        value={state.task}
-                        onChange={(e, newValue) => state.task = newValue || ""}
+                        styles={{ root: { flex: 1 } }}
+                        value={state.observation}
+                        onChange={(e, newValue) => state.observation = newValue || ""}
                     />
-                    <Stack horizontal tokens={{ childrenGap: 2 }} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                        <TextField
-                            label="观察："
-                            multiline
-                            rows={3}
-                            styles={{ root: { flex: 1 } }}
-                            value={state.observation}
-                            onChange={(e, newValue) => state.observation = newValue || ""}
-                        />
-                        <TextField
-                            label="思考："
-                            multiline
-                            rows={3}
-                            styles={{ root: { flex: 1 } }}
-                            value={state.thought}
-                            onChange={(e, newValue) => state.thought = newValue || ""}
-                        />
-                    </Stack>
-                    <Stack horizontal tokens={{ childrenGap: 2 }}>
-                        <DefaultButton text="点" onClick={handleTap} styles={{ root: { minWidth: 30 } }} />
-                        <DefaultButton text="滑" onClick={handleSwipe} styles={{ root: { minWidth: 30 } }} />
-                        <DefaultButton text="输入" onClick={handleTypeText} styles={{ root: { minWidth: 30 } }} />
-
-                        <DefaultButton text="返回" onClick={handleKeyEvent} styles={{ root: { minWidth: 30 } }} />
-                        <DefaultButton text="家" onClick={handleStartMainActivity} styles={{ root: { minWidth: 30 } }} />
-                        <DefaultButton text="等待" onClick={handleWaitEvent} styles={{ root: { minWidth: 30 } }} />
-                        <DefaultButton text="完成" onClick={handleFinishEvent} styles={{ root: { minWidth: 30 } }} />
-                    </Stack>
-                    <Stack horizontal tokens={{ childrenGap: 2 }}>
-                        <TextField
-                            label="操作"
-                            name="操作"
-                            styles={{ root: { width: 100 } }}
-                            value={state.commandTypeName}
-                            disabled
-                        // onChange={(e, newValue) => state.inputText = newValue || ""}
-                        />
-                        <TextField
-                            label="输入"
-                            name="输入"
-                            styles={{ root: { flex: 1 } }}
-                            value={state.inputText}
-                            onChange={(e, newValue) => runInAction(() => { state.inputText = newValue || "" })}
-                        />
-                    </Stack>
-                    <Stack horizontal tokens={{ childrenGap: 2 }}>
-                        <TextField
-                            label="X1"
-                            name="coordX1"
-                            value={state.coordX1}
-                            onChange={(e, newValue) => state.coordX1 = handleCoordChange(e, newValue)}
-                            styles={{ root: { width: 100 } }}
-                        />
-                        <TextField
-                            label="Y1"
-                            name="coordY1"
-                            value={state.coordY1}
-                            onChange={(e, newValue) => state.coordY1 = handleCoordChange(e, newValue)}
-                            styles={{ root: { width: 100 } }}
-                        />
-                        <TextField
-                            label="X2"
-                            name="coordX2"
-                            value={state.coordX2}
-                            onChange={(e, newValue) => state.coordX2 = handleCoordChange(e, newValue)}
-                            styles={{ root: { width: 100 } }}
-                        />
-                        <TextField
-                            label="Y2"
-                            name="coordY2"
-                            value={state.coordY2}
-                            onChange={(e, newValue) => state.coordY2 = handleCoordChange(e, newValue)}
-                            styles={{ root: { width: 100 } }}
-                        />
-                    </Stack>
-                    {
-                        error && (
-                            <Dialog
-                                hidden={false}
-                                onDismiss={() => setError(null)}
-                                dialogContentProps={{
-                                    title: 'Error',
-                                    subText: error,
-                                }}
-                            />
-                        )
-                    }
-
+                    <TextField
+                        label="思考："
+                        multiline
+                        rows={3}
+                        styles={{ root: { flex: 1 } }}
+                        value={state.thought}
+                        onChange={(e, newValue) => state.thought = newValue || ""}
+                    />
                 </Stack>
+                <Stack horizontal tokens={{ childrenGap: 2 }}>
+                    <DefaultButton text="点" onClick={handleTap} styles={{ root: { minWidth: 30 } }} />
+                    <DefaultButton text="滑" onClick={handleSwipe} styles={{ root: { minWidth: 30 } }} />
+                    <DefaultButton text="输入" onClick={handleTypeText} styles={{ root: { minWidth: 30 } }} />
+
+                    <DefaultButton text="返回" onClick={handleKeyEvent} styles={{ root: { minWidth: 30 } }} />
+                    <DefaultButton text="家" onClick={handleStartMainActivity} styles={{ root: { minWidth: 30 } }} />
+                    <DefaultButton text="等待" onClick={handleWaitEvent} styles={{ root: { minWidth: 30 } }} />
+                    <DefaultButton text="完成" onClick={handleFinishEvent} styles={{ root: { minWidth: 30 } }} />
+                </Stack>
+                <Stack horizontal tokens={{ childrenGap: 2 }}>
+                    <TextField
+                        label="操作"
+                        name="操作"
+                        styles={{ root: { width: 100 } }}
+                        value={state.commandTypeName}
+                        disabled
+                    // onChange={(e, newValue) => state.inputText = newValue || ""}
+                    />
+                    <TextField
+                        label="输入"
+                        name="输入"
+                        styles={{ root: { flex: 1 } }}
+                        value={state.inputText}
+                        onChange={(e, newValue) => runInAction(() => { state.inputText = newValue || "" })}
+                    />
+                </Stack>
+                <Stack horizontal tokens={{ childrenGap: 2 }}>
+                    <TextField
+                        label="X1"
+                        name="coordX1"
+                        value={STATE.coordX1}
+                        onChange={(e, newValue) => STATE.coordX1 = handleCoordChange(e, newValue)}
+                        styles={{ root: { width: 100 } }}
+                    />
+                    <TextField
+                        label="Y1"
+                        name="coordY1"
+                        value={STATE.coordY1}
+                        onChange={(e, newValue) => STATE.coordY1 = handleCoordChange(e, newValue)}
+                        styles={{ root: { width: 100 } }}
+                    />
+                    <TextField
+                        label="X2"
+                        name="coordX2"
+                        value={STATE.coordX2}
+                        onChange={(e, newValue) => STATE.coordX2 = handleCoordChange(e, newValue)}
+                        styles={{ root: { width: 100 } }}
+                    />
+                    <TextField
+                        label="Y2"
+                        name="coordY2"
+                        value={STATE.coordY2}
+                        onChange={(e, newValue) => STATE.coordY2 = handleCoordChange(e, newValue)}
+                        styles={{ root: { width: 100 } }}
+                    />
+                </Stack>
+                <DeviceView width={2} height={2}>
+                    <canvas ref={canvasRef} style={{ display: "none" }} />
+                </DeviceView>
+                {
+                    error && (
+
+                        <Dialog
+                            hidden={false}
+                            onDismiss={() => setError(null)}
+                            dialogContentProps={{
+                                title: 'Error',
+                                subText: error,
+                            }}
+                        />
+                    )
+                }
+
             </Stack>
+            {/* </Stack> */}
         </Stack>
 
     );

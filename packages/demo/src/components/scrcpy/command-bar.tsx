@@ -20,46 +20,43 @@ const ITEMS = computed(() => {
 
     result.push({
         key: "stop",
-        iconProps: { iconName: Icons.Stop },
-        text: "Stop",
+        iconProps: { iconName: STATE.running ? Icons.Stop : Icons.Play },
+        text: STATE.running ? "Stop" : "Start",
         onClick: STATE.stop as VoidFunction,
     });
 
     result.push(
         RECORD_STATE.recording
             ? {
-                  key: "Record",
-                  iconProps: {
-                      iconName: Icons.Record,
-                      style: { color: "red" },
-                  },
-                  // prettier-ignore
-                  text: `${
-                      RECORD_STATE.hours ? `${RECORD_STATE.hours}:` : ""
-                  }${
-                      RECORD_STATE.minutes.toString().padStart(2, "0")
-                  }:${
-                      RECORD_STATE.seconds.toString().padStart(2, "0")
-                  }`,
-                  onClick: action(() => {
-                      STATE.fullScreenContainer!.focus();
+                key: "Record",
+                iconProps: {
+                    iconName: Icons.Record,
+                    style: { color: "red" },
+                },
+                // prettier-ignore
+                text: `${RECORD_STATE.hours ? `${RECORD_STATE.hours}:` : ""
+                    }${RECORD_STATE.minutes.toString().padStart(2, "0")
+                    }:${RECORD_STATE.seconds.toString().padStart(2, "0")
+                    }`,
+                onClick: action(() => {
+                    STATE.fullScreenContainer!.focus();
 
-                      RECORD_STATE.recorder.stop();
-                      RECORD_STATE.recording = false;
-                  }),
-              }
+                    RECORD_STATE.recorder.stop();
+                    RECORD_STATE.recording = false;
+                }),
+            }
             : {
-                  key: "Record",
-                  disabled: !STATE.running,
-                  iconProps: { iconName: Icons.Record },
-                  text: "Record",
-                  onClick: action(() => {
-                      STATE.fullScreenContainer!.focus();
+                key: "Record",
+                disabled: !STATE.running,
+                iconProps: { iconName: Icons.Record },
+                text: "Record",
+                onClick: action(() => {
+                    STATE.fullScreenContainer!.focus();
 
-                      RECORD_STATE.recorder.start();
-                      RECORD_STATE.recording = true;
-                  }),
-              }
+                    RECORD_STATE.recorder.start();
+                    RECORD_STATE.recording = true;
+                }),
+            }
     );
 
     result.push({
@@ -247,7 +244,7 @@ const ITEMS = computed(() => {
     );
 
     result.push(
-        
+
         {
             key: "NavigationBar",
             iconProps: { iconName: Icons.PanelBottom },

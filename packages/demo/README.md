@@ -32,3 +32,36 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+
+
+## FRIDA script for bypassing Android FLAG_SECURE
+
+```js
+Java.perform(function() {
+    var surface_view = Java.use('android.view.SurfaceView');
+
+    var set_secure = surface_view.setSecure.overload('boolean');
+
+    set_secure.implementation = function(flag){
+        console.log("setSecure() flag called with args: " + flag); 
+        set_secure.call(false);
+    };
+
+    var window = Java.use('android.view.Window');
+    var set_flags = window.setFlags.overload('int', 'int');
+
+    var window_manager = Java.use('android.view.WindowManager');
+    var layout_params = Java.use('android.view.WindowManager$LayoutParams');
+
+    set_flags.implementation = function(flags, mask){
+        //console.log(Object.getOwnPropertyNames(window.__proto__).join('\n'));
+        console.log("flag secure: " + layout_params.FLAG_SECURE.value);
+
+        console.log("before setflags called  flags:  "+ flags);
+        flags =(flags.value & ~layout_params.FLAG_SECURE.value);
+        console.log("after setflags called  flags:  "+ flags);
+
+        set_flags.call(this, flags, mask);
+    };
+});
+```

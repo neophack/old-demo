@@ -73,6 +73,17 @@ interface KeyAction {
     metaState: AndroidKeyEventMeta;
     repeat: number;
 }
+export class AndroidElement {
+    id: string;
+    bbox: [[number, number], [number, number]];
+    attrib: string;
+
+    constructor(id: string, bbox: [[number, number], [number, number]], attrib: string) {
+        this.id = id;
+        this.bbox = bbox;
+        this.attrib = attrib;
+    }
+}
 export type RecordedAction = WheelAction | PointerAction | KeyAction;
 export class ScrcpyPageState {
     running = false;
@@ -88,6 +99,16 @@ export class ScrcpyPageState {
     log: string[] = [];
     labelerVisible = true;
     labeler: string[] = [];
+
+    coordX1 = "";
+    coordY1 = "";
+    coordX2 = "";
+    coordY2 = "";
+    imageData: ImageData | undefined = undefined;
+    capwidth = 0;
+    capheight = 0;
+    elements: AndroidElement[] = [];
+    isDialogVisible = false;
 
     recordedActions: RecordedAction[] = [];
 
@@ -678,9 +699,11 @@ export class ScrcpyPageState {
     };
 
     async stop() {
+        this.isDialogVisible = !STATE.running;
         // Request to close client first
         await this.client?.close();
         this.dispose();
+
     }
 
     dispose() {

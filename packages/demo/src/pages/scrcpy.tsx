@@ -6,6 +6,7 @@ import {
     ProgressIndicator,
     Stack,
     StackItem,
+    DialogType,
 } from "@fluentui/react";
 import { useId } from "@fluentui/react-hooks";
 import { makeStyles, shorthands } from "@griffel/react";
@@ -28,7 +29,9 @@ import {
 import { useLocalStorage } from "../hooks";
 import { GLOBAL_STATE } from "../state";
 import { CommonStackTokens, RouteStackProps, formatSpeed } from "../utils";
-import {FileService} from "../components/file-service"
+import { FileService } from "../components/file-service"
+import CanvasComponent from '../components/CanvasComponent'
+
 
 const useClasses = makeStyles({
     layerHost: {
@@ -89,7 +92,7 @@ const ConnectingDialog = observer(() => {
                         percentComplete={
                             STATE.serverTotalSize
                                 ? STATE.serverDownloadedSize /
-                                  STATE.serverTotalSize
+                                STATE.serverTotalSize
                                 : undefined
                         }
                         description={formatSpeed(
@@ -226,6 +229,8 @@ const Scrcpy: NextPage = () => {
         };
     }, []);
 
+
+
     return (
         <Stack {...RouteStackProps}>
             <Head>
@@ -248,27 +253,41 @@ const Scrcpy: NextPage = () => {
                                 keyboardLockEnabled={keyboardLockEnabled}
                             />
 
-                            <DeviceView
-                                width={STATE.rotatedWidth}
-                                height={STATE.rotatedHeight}
-                                BottomElement={NavigationBar}
-                            >
-                                <VideoContainer />
-                            </DeviceView>
+                            <Stack horizontal={STATE.capwidth < STATE.capheight} grow styles={{ root: { height: 0 } }}>
+                                <DeviceView
+                                    width={STATE.rotatedWidth}
+                                    height={STATE.rotatedHeight}
+                                    BottomElement={NavigationBar}
+                                    style={{ border: "5px solid #31D1D6" }}
+                                >
+                                    <VideoContainer />
+                                </DeviceView>
+                                {STATE.capwidth != 0 && STATE.capheight != 0 && <DeviceView
+                                    width={STATE.capwidth}
+                                    height={STATE.capheight}
+                                    style={{ border: "5px solid #C7C72C" }}
+                                >
+                                    <CanvasComponent state={STATE} />
+                                </DeviceView>
+                                }
+                            </Stack>
+
+
+
                         </div>
                         <div
                             style={{
                                 padding: 0,
                                 overflow: "hidden auto",
                                 display: STATE.labelerVisible ? "block" : "none",
-                                width: 800,
+                                width: 500,
                                 fontFamily: "monospace",
                                 overflowY: "auto",
                                 whiteSpace: "pre-wrap",
                                 wordWrap: "break-word",
                             }}
                         >
-                            
+
                             <LabelerPanel
                                 style={{
                                     display: STATE.labelerVisible
@@ -307,7 +326,7 @@ const Scrcpy: NextPage = () => {
                                 <div key={index}>{line}</div>
                             ))}
                         </div>
-                    
+
                         <DemoModePanel
                             style={{
                                 display: STATE.demoModeVisible
@@ -319,48 +338,142 @@ const Scrcpy: NextPage = () => {
                 </>
             ) : (
                 <>
-                    <div>
-                        <ExternalLink
-                            href="https://github.com/Genymobile/scrcpy"
-                            spaceAfter
+                    <ScrcpyCommandBar />
+                    <Stack horizontal grow styles={{ root: { height: 0 } }}>
+                        <div
+                            ref={STATE.setFullScreenContainer}
+                            className={classes.fullScreenContainer}
+                            tabIndex={0}
+                            onKeyDown={handleKeyEvent}
+                            onKeyUp={handleKeyEvent}
                         >
-                            Scrcpy
-                        </ExternalLink>
-                        can mirror device display and audio with low latency and
-                        control the device, all without root access.
-                    </div>
-                    <div>
-                        This is a TypeScript re-implementation of the client
-                        part. Paired with official pre-built server binary.
-                    </div>
+                            <FullscreenHint
+                                keyboardLockEnabled={keyboardLockEnabled}
+                            />
 
-                    <StackItem align="start">
-                        <PrimaryButton
-                            text="Start"
-                            disabled={!GLOBAL_STATE.adb}
-                            onClick={STATE.start}
+                            <Stack horizontal={STATE.capwidth < STATE.capheight} grow styles={{ root: { height: 0 } }}>
+                                <DeviceView
+                                    width={STATE.capwidth}
+                                    height={STATE.capheight}
+                                    style={{ border: "5px solid #C7C72C" }}
+                                >
+                                    <CanvasComponent state={STATE} />
+                                </DeviceView>
+                            </Stack>
+
+                        </div>
+                        <div
+                            style={{
+                                padding: 0,
+                                overflow: "hidden auto",
+                                display: STATE.labelerVisible ? "block" : "none",
+                                width: 500,
+                                fontFamily: "monospace",
+                                overflowY: "auto",
+                                whiteSpace: "pre-wrap",
+                                wordWrap: "break-word",
+                            }}
+                        >
+
+                            <LabelerPanel
+                                style={{
+                                    display: STATE.labelerVisible
+                                        ? "block"
+                                        : "none",
+                                }}
+                            />
+                        </div>
+                        <div
+                            style={{
+                                padding: 2,
+                                overflow: "hidden auto",
+                                display: STATE.listVisible ? "block" : "none",
+                                width: 200,
+                                fontFamily: "monospace",
+                                overflowY: "auto",
+                                whiteSpace: "pre-wrap",
+                                wordWrap: "break-word",
+                            }}
+                        >
+                            <FileService></FileService>
+                        </div>
+                        <div
+                            style={{
+                                padding: 12,
+                                overflow: "hidden auto",
+                                display: STATE.logVisible ? "block" : "none",
+                                width: 500,
+                                fontFamily: "monospace",
+                                overflowY: "auto",
+                                whiteSpace: "pre-wrap",
+                                wordWrap: "break-word",
+                            }}
+                        >
+                            {STATE.log.map((line, index) => (
+                                <div key={index}>{line}</div>
+                            ))}
+                        </div>
+
+                        <DemoModePanel
+                            style={{
+                                display: STATE.demoModeVisible
+                                    ? "block"
+                                    : "none",
+                            }}
                         />
-                    </StackItem>
 
-                    {SETTING_DEFINITIONS.get().map((definition) => (
-                        <SettingItem
-                            key={definition.key}
-                            definition={definition}
-                            value={
-                                (SETTING_STATE[definition.group] as any)[
+                    </Stack>
+
+                    <Dialog
+                        minWidth={400}
+                        hidden={!STATE.isDialogVisible || !GLOBAL_STATE.adb}
+                        onDismiss={() => { STATE.isDialogVisible = false }}
+                        dialogContentProps={{ type: DialogType.normal, title: "Start" }}
+                    >
+                        <div>
+                            <ExternalLink
+                                href="https://github.com/Genymobile/scrcpy"
+                                spaceAfter
+                            >
+                                Scrcpy
+                            </ExternalLink>
+                            can mirror device display and audio with low latency and
+                            control the device, all without root access.
+                        </div>
+                        <div>
+                            This is a TypeScript re-implementation of the client
+                            part. Paired with official pre-built server binary.
+                        </div>
+
+                        <StackItem align="start">
+                            <PrimaryButton
+                                text="Start"
+                                disabled={!GLOBAL_STATE.adb}
+                                onClick={STATE.start}
+                            />
+                        </StackItem>
+
+                        {SETTING_DEFINITIONS.get().map((definition) => (
+                            <SettingItem
+                                key={definition.key}
+                                definition={definition}
+                                value={
+                                    (SETTING_STATE[definition.group] as any)[
                                     definition.key
-                                ]
-                            }
-                            onChange={action(
-                                (definition, value) =>
+                                    ]
+                                }
+                                onChange={action(
+                                    (definition, value) =>
                                     ((SETTING_STATE[definition.group] as any)[
                                         definition.key
                                     ] = value)
-                            )}
-                        />
-                    ))}
+                                )}
+                            />
+                        ))}
+                    </Dialog>
 
                     <ConnectingDialog />
+
                 </>
             )}
         </Stack>
