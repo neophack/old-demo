@@ -15,6 +15,17 @@ import {
     Stack,
     Dialog,
 } from "@fluentui/react";
+import {
+    useId,
+    Link,
+    Button,
+    Toaster,
+    useToastController,
+    Toast,
+    ToastTitle,
+    ToastBody,
+    ToastFooter,
+} from "@fluentui/react-components";
 import { autorun, makeAutoObservable, reaction, runInAction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { CSSProperties, useCallback, useState } from "react";
@@ -938,6 +949,16 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
         });
     }
 
+    const toasterId = useId("toaster");
+    const { dispatchToast } = useToastController(toasterId);
+    const notify = (msg: String) =>
+        dispatchToast(
+            <Toast style={{ background: "cadetblue" }}>
+                <ToastTitle>上传</ToastTitle>
+                <ToastBody >{msg}</ToastBody>
+            </Toast>,
+            { intent: "success" }
+        );
 
     const commandBarItems2 = computed(() => [
         {
@@ -965,8 +986,14 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                             // Now you have a File object created from the STATE.imageData
                             console.log(file);
                             try {
-                                const result = uploadFile(file);
-                                console.log('File uploaded successfully:', result);
+                                uploadFile(file).then(result => {
+                                    notify("图像：" + result);
+                                    console.log(result); // 输出 "File uploaded successfully"
+                                    // 你可以在这里处理文件上传成功后的逻辑
+                                })
+                                    .catch(error => {
+                                        console.error(error); // 如果上传失败，输出错误信息
+                                    });
                             } catch (error) {
                                 setError('Error uploading file:' + error);
                             }
@@ -977,8 +1004,16 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                             // Upload a JSON file
                             const file2 = new File([jsonContent], jsonFileName, { type: 'application/json' });
                             try {
-                                const uploadResponse = uploadFile(file2);
-                                console.log('File uploaded successfully:', uploadResponse);
+                                uploadFile(file2)
+                                    .then(result => {
+                                        notify("标注：" + result);
+                                        console.log(result); // 输出 "File uploaded successfully"
+                                        // 你可以在这里处理文件上传成功后的逻辑
+                                    })
+                                    .catch(error => {
+                                        console.error(error); // 如果上传失败，输出错误信息
+                                    });
+
                             } catch (error) {
                                 setError('Failed to upload file:' + error);
                             }
@@ -1271,6 +1306,7 @@ export const LabelerPanel = observer(({ style }: LabelerPanelProps) => {
                         />
                     )
                 }
+                <Toaster toasterId={toasterId} />
 
             </Stack>
             {/* </Stack> */}
